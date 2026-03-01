@@ -31,7 +31,7 @@ Thread(target=run).start()
 # --- [ الإعدادات ] ---
 API_TOKEN = '8461494562:AAF3PnajVvXjzL1-aC8RxJwHmP5ahmTIvcs'
 OWNER_ID = '6016547718'
-OXA_API_KEY = 'FYYUOW-LY5JFH-BLBLUZ-9M6BTO'
+OXA_API_KEY = 'CE8H0F-ISXBD2-RXHALY-KZXUZU'
 WALLET_ADDRESS = "TLtLuhkU2kkkR1Wz1TtrBTpoNRTNviYpsA"
 DB_FILE = "radar_fixed_final.json"
 
