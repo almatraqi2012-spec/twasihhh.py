@@ -55,41 +55,70 @@ def get_analysis(symbol):
         s_clean = symbol.upper().replace("/", "").strip()
         if not s_clean.endswith("USDT"): s_clean += "USDT"
         
+        # جلب بيانات كافية للتحليل العميق (100 شمعة)
         url = f"https://api.binance.com/api/v3/klines?symbol={s_clean}&interval=15m&limit=100"
         r = requests.get(url, timeout=10)
         source = "BINANCE"
-        
         if r.status_code != 200:
             url = f"https://api.mexc.com/api/v3/klines?symbol={s_clean}&interval=15m&limit=100"
-            r = requests.get(url, timeout=10)
-            source = "MEXC"
+            r = requests.get(url, timeout=10); source = "MEXC"
             
         data = r.json()
         closes = [float(c[4]) for c in data]
         price = closes[-1]
         
-        # حساب RSI دقيق
+        # 1. حساب RSI
         diffs = [closes[i] - closes[i-1] for i in range(1, len(closes))]
-        gains = [sum([d for d in diffs[-14:] if d > 0]) / 14]
-        losses = [sum([-d for d in diffs[-14:] if d < 0]) / 14]
-        
-        if losses[0] == 0: rsi = 100
-        else: rsi = 100 - (100 / (1 + (gains[0] / losses[0])))
+        avg_gain = sum([d for d in diffs[-14:] if d > 0]) / 14
+        avg_loss = sum([-d for d in diffs[-14:] if d < 0]) / 14
+        rsi = 100 - (100 / (1 + (avg_gain/avg_loss if avg_loss != 0 else 1)))
 
+        # 2. حساب Bollinger Bands (20, 2)
         sma20 = sum(closes[-20:]) / 20
-        
-        if rsi < 30: signal, desc = "🚀 شراء قوي (قاع)", "المنطقة مثالية للارتداد الصاعد."
-        elif rsi > 70: signal, desc = "⚠️ خروج / بيع (قمة)", "تضخم سعري، ينصح بجني الأرباح."
-        elif price > sma20: signal, desc = "📈 ترند صاعد", "الزخم إيجابي والسعر فوق المتوسط."
-        else: signal, desc = "📉 ترند هابط", "لا يفضل الدخول، السعر تحت الضغط."
+        variance = sum([(x - sma20)**2 for x in closes[-20:]]) / 20
+        std_dev = variance**0.5
+        upper_band = sma20 + (std_dev * 2)
+        lower_band = sma20 - (std_dev * 2)
+
+        # 3. حساب تقاطع MACD (مبسط)
+        ema12 = sum(closes[-12:]) / 12
+        ema26 = sum(closes[-26:]) / 26
+        macd_line = ema12 - ema26
+
+        # --- خوارزمية اتخاذ القرار (نظام النقاط) ---
+        score = 0
+        if rsi < 35: score += 2  # منطقة قاع
+        if price <= lower_band: score += 2 # كسر البولينجر السفلي (ارتداد)
+        if macd_line > 0: score += 1 # زخم إيجابي
+        if price > sma20: score += 1 # ترند صاعد
+
+        # تحديد الإشارة بناءً على القوة
+        if score >= 4:
+            signal = "🚀 شراء قوي جداً (ثقة عالية)"
+            desc = "تطابق 4 مؤشرات: تشبع بيعي + ارتداد من البولينجر + سيولة MACD."
+            target, stop = price * 1.055, price * 0.955
+        elif score >= 2:
+            signal = "📈 دخول مضاربي (ثقة متوسطة)"
+            desc = "المؤشرات إيجابية تدريجياً، يفضل الدخول بأهداف قريبة."
+            target, stop = price * 1.03, price * 0.97
+        elif rsi > 70 or price >= upper_band:
+            signal = "⚠️ جني أرباح / خروج"
+            desc = "انتبه! السعر عند سقف البولينجر العلوي مع تضخم RSI."
+            target, stop = "تم الوصول", "خروج فوراً"
+        else:
+            signal = "🚫 انتظار (مراقبة)"
+            desc = "لا توجد إشارة دخول واضحة حالياً، انتظر تأكيد السيولة."
+            target, stop = "---", "---"
 
         chart_url = f"https://www.tradingview.com/chart/?symbol={source}:{s_clean}"
         
-        return (f"🏛 **رادار القابضة الاحترافي**\n━━━━━━━━━━━━━━\n"
-                f"🪙 العملة: #{s_clean} | `{source}`\n💰 السعر: `{price}`\n📊 RSI: {rsi:.1f}\n━━━━━━━━━━━━━━\n"
+        return (f"🏛 **رادار القابضة V3 - المحلل الخبير**\n━━━━━━━━━━━━━━\n"
+                f"🪙 العملة: #{s_clean} | `{source}`\n💰 السعر الحالي: `{price}`\n"
+                f"📊 RSI: {rsi:.1f} | BB: {'قاع' if price < lower_band else 'قمة' if price > upper_band else 'وسط'}\n"
+                f"📊 MACD: {'إيجابي' if macd_line > 0 else 'سلبي'}\n━━━━━━━━━━━━━━\n"
                 f"💡 الإشارة: **{signal}**\n📌 الحالة: {desc}\n━━━━━━━━━━━━━━\n"
-                f"🎯 الهدف: `{price*1.04:.4f}`\n🛡️ الوقف: `{price*0.96:.4f}`\n"
-                f"🔗 [فتح الشارت المباشر]({chart_url})")
+                f"🎯 الهدف القادم: `{target}`\n🛡️ وقف الخسارة: `{stop}`\n"
+                f"🔗 [فتح الشارت المباشر لـ {s_clean}]({chart_url})")
     except: return None
 
 # --- [ الأوامر الرئيسية ] ---
