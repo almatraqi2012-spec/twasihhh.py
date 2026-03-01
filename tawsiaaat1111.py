@@ -66,44 +66,53 @@ def get_pro_analysis(symbol):
         symbol = symbol.upper().replace("/", "").strip()
         if not symbol.endswith("USDT"): symbol += "USDT"
 
-        # --- المحاولة الأولى: بينانس ---
         source = "BINANCE"
         url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=15m&limit=100"
         res = requests.get(url, timeout=5).json()
 
-        # إذا فشل في بينانس (عملة غير موجودة)، ينتقل لماكسيك
         if isinstance(res, dict) and (res.get('code') == -1121 or 'msg' in res):
             source = "MEXC"
             url = f"https://api.mexc.com/api/v3/klines?symbol={symbol}&interval=15m&limit=100"
             res = requests.get(url, timeout=5).json()
 
-        # قراءة البيانات (نفس التنسيق للمنصتين)
+        # قراءة البيانات
         closes = [float(c[4]) for c in res]
         highs = [float(c[2]) for c in res]
         lows = [float(c[3]) for c in res]
-        live_price = closes[-1]
+        volumes = [float(c[5]) for c in res]  # إضافة بيانات الفوليوم
 
-        # حساب المؤشرات الفنية (RSI + SMA)
-        highest, lowest = max(highs), min(lows)
+        live_price = closes[-1]
+        avg_volume = sum(volumes[-20:]) / 20  # متوسط الفوليوم لآخر 20 شمعة
+        current_volume = volumes[-1]
+
+        # حساب RSI
         sma = sum(closes[-20:]) / 20
         gains = sum([max(0, closes[i] - closes[i-1]) for i in range(-14, 0)])
         losses = sum([max(0, closes[i-1] - closes[i]) for i in range(-14, 0)])
         rsi = 100 - (100 / (1 + (gains/losses if losses != 0 else 1)))
 
-        # منطق الإشارات
-        if live_price <= lowest * 1.01 and rsi < 35:
-            s, t, tg, sl = "🚀 شراء (قاع)", "📈 ارتداد متوقع", sma, lowest * 0.99
-        elif live_price >= highest * 0.99 or rsi > 70:
-            s, t, tg, sl = "⚠️ بيع (قمة)", "📉 تصحيح للأسفل", sma, highest * 1.01
-        elif live_price > sma:
-            s, t, tg, sl = "📈 ترند صاعد", "✅ موجة صعود", highest, sma * 0.98
-        else:
-            s, t, tg, sl = "📉 ترند هابط", "❌ موجة هبوط", lowest, live_price * 1.02
+        # تحليل قوة السيولة (Volume Analysis)
+        vol_status = "💎 سيولة عالية" if current_volume > avg_volume else "⚠️ سيولة ضعيفة"
 
-        # تنسيق الرسالة النهائية مع ذكر المصدر
-        return (f"🏛 **توصية** | `{source}`\n━━━━━━━━━━━━━━\n"
-                f"� العملة: #{symbol}\n💰 السعر: `{live_price:.4f}`\n"
-                f"📊 RSI: {rsi:.1f}\n━━━━━━━━━━━━━━\n"
+        # منطق الإشارات المطور
+        highest, lowest = max(highs), min(lows)
+        
+        if live_price <= lowest * 1.01 and rsi < 35:
+            s, t = "🚀 شراء (قاع مؤكد)", "📈 ارتداد قوي مدعوم بالسيولة" if current_volume > avg_volume else "📈 ارتداد ضعيف"
+            tg, sl = live_price * 1.03, lowest * 0.98  # أهداف واقعية 3%
+        elif live_price >= highest * 0.99 or rsi > 70:
+            s, t = "⚠️ بيع (قمة)", "📉 تصحيح متوقع"
+            tg, sl = live_price * 0.97, highest * 1.02
+        elif current_volume > avg_volume * 1.5 and live_price > sma:
+            s, t = "🔥 انفجار سعري", "✅ دخول سيولة ضخمة الآن"
+            tg, sl = live_price * 1.05, live_price * 0.97
+        else:
+            s, t = "⚖️ تذبذب", "⏳ انتظر إشارة أقوى"
+            tg, sl = sma, live_price * 0.98
+
+        return (f"🏛 **رادار القابضة** | `{source}`\n━━━━━━━━━━━━━━\n"
+                f"🪙 العملة: #{symbol}\n💰 السعر: `{live_price:.4f}`\n"
+                f"📊 RSI: {rsi:.1f} | {vol_status}\n━━━━━━━━━━━━━━\n"
                 f"💡 الإشارة: **{s}**\n📌 التوجه: {t}\n━━━━━━━━━━━━━━\n"
                 f"🎯 الهدف: `{tg:.4f}`\n🛡️ الوقف: `{sl:.4f}`\n"
                 f"🔗 [الشارت المباشر](https://www.tradingview.com/chart/?symbol={source}:{symbol})")
