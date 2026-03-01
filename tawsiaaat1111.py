@@ -1,6 +1,14 @@
 import requests, telebot, time, json, os, datetime
 from telebot import types
+from flask import Flask
+from threading import Thread
 
+app = Flask('')
+@app.route('/')
+def home(): return "Radar is Online!"
+
+def run(): app.run(host='0.0.0.0', port=8080)
+Thread(target=run).start()
 # --- [ الإعدادات ] ---
 API_TOKEN = '8461494562:AAF3PnajVvXjzL1-aC8RxJwHmP5ahmTIvcs'
 OWNER_ID = '6016547718'
