@@ -1,12 +1,30 @@
 import requests, telebot, time, json, os, datetime
 from telebot import types
-from flask import Flask
+from flask import Flask, request
 from threading import Thread
 
-# --- [ سيرفر التشغيل ] ---
+# --- [ سيرفر التشغيل والـ Webhook ] ---
 app = Flask('')
+
 @app.route('/')
-def home(): return "Professional High-Confidence Radar Active"
+def home(): return "Radar Pro is 100% Active"
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    data = request.json
+    if data and data.get('status') == 'success':
+        # استخراج ID المستخدم من الوصف المرسل للفاتورة
+        description = data.get('description', '')
+        if "VIP_" in description:
+            uid = description.split("_")[1]
+            db["vip"][uid] = time.time() + (30 * 86400)
+            save_db()
+            try:
+                bot.send_message(uid, "🌟 مبروك! تم تفعيل اشتراكك VIP تلقائياً عبر نظام الدفع الذكي.")
+            except: pass
+            return "OK", 200
+    return "No Action", 200
+
 def run(): app.run(host='0.0.0.0', port=8080)
 Thread(target=run).start()
 
@@ -15,72 +33,66 @@ API_TOKEN = '8461494562:AAF3PnajVvXjzL1-aC8RxJwHmP5ahmTIvcs'
 OWNER_ID = '6016547718'
 OXA_API_KEY = 'FYYUOW-LY5JFH-BLBLUZ-9M6BTO'
 WALLET_ADDRESS = "TLtLuhkU2kkkR1Wz1TtrBTpoNRTNviYpsA"
-DB_FILE = "radar_fixed_v4.json"
+DB_FILE = "radar_fixed_final.json"
 
 bot = telebot.TeleBot(API_TOKEN)
 
 # --- [ قاعدة البيانات ] ---
 def load_db():
     if os.path.exists(DB_FILE):
-        with open(DB_FILE, 'r') as f: return json.load(f)
+        try:
+            with open(DB_FILE, 'r') as f: return json.load(f)
+        except: pass
     return {"vip": {}, "usage": {}}
 
 db = load_db()
 def save_db():
     with open(DB_FILE, 'w') as f: json.dump(db, f)
 
-# --- [ محرك التحليل الحاسم ] ---
+# --- [ محرك التحليل الاحترافي ] ---
 def get_analysis(symbol):
     try:
-        symbol = symbol.upper().replace("/", "").strip()
-        if not symbol.endswith("USDT"): symbol += "USDT"
+        s_clean = symbol.upper().replace("/", "").strip()
+        if not s_clean.endswith("USDT"): s_clean += "USDT"
         
-        # جلب البيانات من بينانس أو ماكسيك
-        url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=15m&limit=100"
-        res = requests.get(url, timeout=5).json()
+        url = f"https://api.binance.com/api/v3/klines?symbol={s_clean}&interval=15m&limit=100"
+        r = requests.get(url, timeout=10)
         source = "BINANCE"
-        if isinstance(res, dict):
-            url = f"https://api.mexc.com/api/v3/klines?symbol={symbol}&interval=15m&limit=100"
-            res = requests.get(url, timeout=5).json()
-            source = "MEXC"
-
-        closes = [float(c[4]) for c in res]
-        price = closes[-1]
-        sma20 = sum(closes[-20:]) / 20
-        sma50 = sum(closes[-50:]) / 50
         
-        # حساب RSI
-        gains = sum([max(0, closes[i] - closes[i-1]) for i in range(-14, 0)])
-        losses = sum([max(0, closes[i-1] - closes[i]) for i in range(-14, 0)])
-        rsi = 100 - (100 / (1 + (rsi_g/rsi_l if (rsi_l := losses) != 0 else 1)))
+        if r.status_code != 200:
+            url = f"https://api.mexc.com/api/v3/klines?symbol={s_clean}&interval=15m&limit=100"
+            r = requests.get(url, timeout=10)
+            source = "MEXC"
+            
+        data = r.json()
+        closes = [float(c[4]) for c in data]
+        price = closes[-1]
+        
+        # حساب RSI دقيق
+        diffs = [closes[i] - closes[i-1] for i in range(1, len(closes))]
+        gains = [sum([d for d in diffs[-14:] if d > 0]) / 14]
+        losses = [sum([-d for d in diffs[-14:] if d < 0]) / 14]
+        
+        if losses[0] == 0: rsi = 100
+        else: rsi = 100 - (100 / (1 + (gains[0] / losses[0])))
 
-        # اتخاذ قرار حاسم
-        if rsi < 35 or (price > sma20 and sma20 > sma50):
-            signal = "🚀 شراء (فرصة قوية)"
-            target = price * 1.05
-            stop = price * 0.96
-            desc = "تحليل فني يشير لصعود قوي ودخول سيولة."
-        elif rsi > 65 or price < sma50:
-            signal = "⚠️ خروج / بيع"
-            target = price * 0.95
-            stop = price * 1.04
-            desc = "منطقة تشبع شرائي أو كسر ترند.. احذر."
-        else:
-            signal = "📈 ترند صاعد مستقر"
-            target = price * 1.03
-            stop = price * 0.98
-            desc = "العملة في مسار إيجابي تدريجي."
+        sma20 = sum(closes[-20:]) / 20
+        
+        if rsi < 30: signal, desc = "🚀 شراء قوي (قاع)", "المنطقة مثالية للارتداد الصاعد."
+        elif rsi > 70: signal, desc = "⚠️ خروج / بيع (قمة)", "تضخم سعري، ينصح بجني الأرباح."
+        elif price > sma20: signal, desc = "📈 ترند صاعد", "الزخم إيجابي والسعر فوق المتوسط."
+        else: signal, desc = "📉 ترند هابط", "لا يفضل الدخول، السعر تحت الضغط."
 
-        chart_url = f"https://www.tradingview.com/chart/?symbol={source}:{symbol}"
+        chart_url = f"https://www.tradingview.com/chart/?symbol={source}:{s_clean}"
         
         return (f"🏛 **رادار القابضة الاحترافي**\n━━━━━━━━━━━━━━\n"
-                f"🪙 العملة: #{symbol} | `{source}`\n💰 السعر: `{price}`\n📊 RSI: {rsi:.1f}\n━━━━━━━━━━━━━━\n"
+                f"🪙 العملة: #{s_clean} | `{source}`\n💰 السعر: `{price}`\n📊 RSI: {rsi:.1f}\n━━━━━━━━━━━━━━\n"
                 f"💡 الإشارة: **{signal}**\n📌 الحالة: {desc}\n━━━━━━━━━━━━━━\n"
-                f"🎯 الهدف: `{target:.4f}`\n🛡️ الوقف: `{stop:.4f}`\n"
-                f"🔗 [اضغط هنا لفتح الشارت المباشر]({chart_url})")
+                f"🎯 الهدف: `{price*1.04:.4f}`\n🛡️ الوقف: `{price*0.96:.4f}`\n"
+                f"🔗 [فتح الشارت المباشر]({chart_url})")
     except: return None
 
-# --- [ الأوامر وإصلاح الأزرار ] ---
+# --- [ الأوامر الرئيسية ] ---
 def main_menu():
     m = types.ReplyKeyboardMarkup(resize_keyboard=True)
     m.row("🔍 تحليل عملة", "💎 حسابي")
@@ -90,69 +102,69 @@ def main_menu():
 @bot.message_handler(commands=['start'])
 def welcome(m):
     uid = str(m.from_user.id)
-    if uid not in db["usage"]: db["usage"][uid] = {"count":0, "free":0}
+    if uid not in db["usage"]: db["usage"][uid] = {"free": 0}
     save_db()
-    bot.send_message(m.chat.id, "👋 مرحباً بك في رادار القابضة الرسمي.\nنظام تحليل ذكي يعتمد على حركة الحيتان والمؤشرات الحية.", reply_markup=main_menu())
+    bot.send_message(m.chat.id, "👋 رادار القابضة V2\nدقة في التحليل.. سرعة في التنفيذ.", reply_markup=main_menu())
 
 @bot.message_handler(func=lambda m: m.text == "🔍 تحليل عملة")
-def start_ana(m):
+def ask_symbol(m):
     uid = str(m.from_user.id)
     is_vip = uid in db["vip"] and db["vip"][uid] > time.time()
-    free_used = db["usage"][uid].get("free", 0)
-
-    if is_vip or free_used < 5:
+    if is_vip or db["usage"][uid].get("free", 0) < 5:
         msg = bot.send_message(m.chat.id, "🎯 أرسل رمز العملة (مثال: BTC):")
-        bot.register_next_step_handler(msg, run_ana)
+        bot.register_next_step_handler(msg, perform_ana)
     else:
-        bot.send_message(m.chat.id, "❌ انتهت المحاولات المجانية. يرجى الاشتراك.")
+        bot.send_message(m.chat.id, "❌ انتهت محاولاتك المجانية. يرجى الاشتراك.")
 
-def run_ana(m):
+def perform_ana(m):
+    bot.send_message(m.chat.id, "⏳ جاري استخراج البيانات...")
     res = get_analysis(m.text)
     if res:
         uid = str(m.from_user.id)
         if uid not in db["vip"] or db["vip"][uid] <= time.time():
             db["usage"][uid]["free"] += 1
-        save_db()
-        bot.send_message(m.chat.id, res, parse_mode="Markdown", disable_web_page_preview=False)
-    else:
-        bot.send_message(m.chat.id, "⚠️ رمز العملة غير مدعوم.")
+            save_db()
+        bot.send_message(m.chat.id, res, parse_mode="Markdown")
+    else: bot.send_message(m.chat.id, "⚠️ العملة غير موجودة، تأكد من الرمز.")
 
 @bot.message_handler(func=lambda m: m.text == "💳 اشتراك VIP (OxaPay)")
-def oxa_pay(m):
+def start_oxa(m):
+    bot.send_message(m.chat.id, "⏳ جاري إنشاء فاتورة دفع آمنة...")
     try:
         res = requests.post("https://api.oxapay.com/api/v2/checkout", json={
             "merchant": OXA_API_KEY, "amount": 50, "currency": "USDT", "network": "TRC20",
             "description": f"VIP_{m.from_user.id}"
-        }).json()
+        }, timeout=15).json()
         if res.get("status") == "success":
-            bot.send_message(m.chat.id, f"✅ اضغط للدفع التلقائي:\n{res.get('payUrl')}")
-    except: bot.send_message(m.chat.id, "⚠️ عطل مؤقت في بوابة الدفع.")
+            bot.send_message(m.chat.id, f"✅ رابط الدفع التلقائي:\n{res.get('payUrl')}\nسيتم تفعيل حسابك لحظياً فور تأكيد الدفع.")
+        else: bot.send_message(m.chat.id, "⚠️ فشل الاتصال ببوابة الدفع.")
+    except: bot.send_message(m.chat.id, "⚠️ البوابة تحت الصيانة، استخدم اليدوي.")
 
 @bot.message_handler(func=lambda m: m.text == "👨‍💻 تفعيل يدوي")
-def manual(m):
-    bot.send_message(m.chat.id, f"ارسل صورة التحويل إلى المحفظة:\n`{WALLET_ADDRESS}`\nسيتم التفعيل فوراً بعد المراجعة.")
+def manual_msg(m):
+    bot.send_message(m.chat.id, f"ارسل صورة التحويل لعنوان محفظتنا:\n`{WALLET_ADDRESS}`")
 
 @bot.message_handler(content_types=['photo'])
-def handle_photo(m):
+def handle_payment_photo(m):
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("✅ تفعيل 30 يوم", callback_data=f"v_{m.from_user.id}_30"))
-    bot.send_message(OWNER_ID, f"إثبات دفع من {m.from_user.id}", reply_markup=markup)
+    markup.add(types.InlineKeyboardButton("✅ تفعيل الحساب", callback_data=f"act_{m.from_user.id}"))
+    bot.send_message(OWNER_ID, f"🔔 إثبات دفع جديد من: {m.from_user.id}", reply_markup=markup)
     bot.forward_message(OWNER_ID, m.chat.id, m.message_id)
-    bot.send_message(m.chat.id, "✅ تم الاستلام، انتظر تفعيل المالك.")
+    bot.send_message(m.chat.id, "✅ تم استلام الإثبات، بانتظار مراجعة الإدارة.")
 
-@bot.callback_query_handler(func=lambda c: c.data.startswith("v_"))
-def finalize(c):
-    _, uid, days = c.data.split("_")
-    db["vip"][uid] = time.time() + (int(days) * 86400)
+@bot.callback_query_handler(func=lambda c: c.data.startswith("act_"))
+def admin_confirm(c):
+    uid = c.data.split("_")[1]
+    db["vip"][uid] = time.time() + (30 * 86400)
     save_db()
-    bot.send_message(uid, "🌟 تم تفعيل اشتراكك بنجاح! حلل الآن.")
+    bot.send_message(uid, "🌟 مبروك! تم تفعيل اشتراكك VIP بنجاح.")
     bot.answer_callback_query(c.id, "تم التفعيل")
 
 @bot.message_handler(func=lambda m: m.text == "💎 حسابي")
-def acc(m):
+def my_account(m):
     uid = str(m.from_user.id)
-    v = db["vip"].get(uid, 0) > time.time()
-    status = "VIP" if v else "مجاني"
-    bot.send_message(m.chat.id, f"👤 الحالة: {status}\n📊 المحاولات المجانية المستخدمة: {db['usage'][uid].get('free', 0)}/5")
+    is_v = db["vip"].get(uid, 0) > time.time()
+    status = "VIP 🌟" if is_v else "مجاني 👤"
+    bot.send_message(m.chat.id, f"📊 حالتك: {status}\n🔄 المحاولات المستخدمة: {db['usage'][uid].get('free', 0)}/5")
 
 bot.infinity_polling()
