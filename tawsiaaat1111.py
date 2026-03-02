@@ -12,13 +12,17 @@ def home(): return "Radar V17 PRO - ONLINE 24/7"
 def webhook():
     try:
         data = request.json
+        # التحقق من أن حالة الدفع "مدفوع"
         if data and str(data.get('status')) in ['paid', 'success', '1']:
             uid = data.get('description', '').replace('CHARGE_', '')
             if uid.isdigit():
+                # التفعيل التلقائي في قاعدة البيانات
                 db["vip"][uid] = time.time() + (30 * 86400)
                 db["daily_limit"][uid] = {"count": 0, "last_reset": str(datetime.date.today())}
                 save_db()
-                bot.send_message(uid, "🌟 **تهانينا! تم تفعيل اشتراك VIP بنجاح لمدة 30 يوم.**\nلديك الآن 5 تحليلات دقيقة يومياً.")
+                bot.send_message(uid, "🌟 **مبروك! تم تأكيد الدفع وتفعيل اشتراك VIP تلقائياً لمدة 30 يوم.**\nلديك الآن 5 تحليلات دقيقة يومياً.")
+                # إشعار لصاحب البوت
+                bot.send_message(OWNER_ID, f"✅ تم دفع اشتراك تلقائي من المستخدم: {uid}")
     except: pass
     return "OK", 200
 
@@ -51,7 +55,6 @@ def get_analysis(symbol):
         s = symbol.upper().replace("/", "").strip()
         if not s.endswith("USDT"): s += "USDT"
         
-        # 1. شمولية المنصات: Binance أولاً ثم MEXC
         source = "BINANCE"
         url = f"https://api.binance.com/api/v3/klines?symbol={s}&interval=15m&limit=100"
         r = requests.get(url, timeout=7)
@@ -61,24 +64,19 @@ def get_analysis(symbol):
             r = requests.get(url, timeout=7)
             
         data = r.json()
-        closes = [float(c[4]) for c in data] # السعر الحالي
-        highs = [float(c[2]) for c in data]  # المقاومات
-        lows = [float(c[3]) for c in data]   # الدعوم
+        closes = [float(c[4]) for c in data]
+        highs = [float(c[2]) for c in data]
+        lows = [float(c[3]) for c in data]
         p = closes[-1]
         
-        # --- المؤشرات الأربعة بدقة ---
-        # 1. المتوسط المتحرك (SMA 20)
         sma = sum(closes[-20:]) / 20
-        # 2. مؤشر RSI (القوة النسبية)
         gains = [max(0, closes[i] - closes[i-1]) for i in range(1, 20)]
         losses = [max(0, closes[i-1] - closes[i]) for i in range(1, 20)]
         avg_g = sum(gains)/20; avg_l = sum(losses)/20
         rs = avg_g / (avg_l if avg_l != 0 else 1)
         rsi = 100 - (100 / (1 + rs))
-        # 3 & 4. الدعوم والمقاومات (Support & Resistance) من آخر 50 شمعة
         sup = min(lows[-50:]); resis = max(highs[-50:])
         
-        # تحليل الإشارة الواقعي
         if rsi < 35 and p <= sma:
             sig, stat = "🚀 شراء (منطقة ارتداد ذهبية)", "المؤشرات تشير لقاع فني مشبع بالبيع. نجاح متوقع جداً."
             t1, t2, sl = p*1.045, p*1.09, sup*0.97
@@ -147,6 +145,7 @@ def ana_execute(m):
     else:
         bot.send_message(m.chat.id, "⚠️ الرمز غير متاح حالياً أو يوجد ضغط على الشبكة.")
 
+# --- [ التعديل المطلوب: نظام الدفع التلقائي ] ---
 @bot.message_handler(func=lambda m: m.text == "💳 اشتراك VIP (OxaPay)")
 def pay_setup(m):
     msg = bot.send_message(m.chat.id, "💰 **أدخل مبلغ التفعيل (الحد الأدنى 50$):**")
@@ -156,14 +155,27 @@ def pay_final(m):
     if not m.text.isdigit() or int(m.text) < 50:
         bot.send_message(m.chat.id, "❌ يرجى إدخال مبلغ 50$ فأكثر."); return
     
-    bot.send_message(m.chat.id, "⏳ جاري توليد فاتورة الدفع الآمنة...")
+    amount = int(m.text)
+    bot.send_message(m.chat.id, "⏳ جاري إنشاء فاتورة دفع مباشرة...")
     try:
-        p = {"merchant": OXA_API_KEY, "amount": int(m.text), "currency": "USDT", "network": "TRC20", "description": f"CHARGE_{m.from_user.id}"}
-        r = requests.post("https://api.oxapay.com/api/v2/checkout", json=p, timeout=15).json()
+        # إرسال طلب لـ OxaPay لإنشاء رابط دفع رسمي
+        payload = {
+            "merchant": OXA_API_KEY,
+            "amount": amount,
+            "currency": "USDT",
+            "network": "TRC20", # شبكة USDT المفضلة
+            "description": f"CHARGE_{m.from_user.id}",
+            "callbackUrl": "https://twasihhh-py.onrender.com/webhook" # الرابط الذي أرسلته لي سابقاً
+        }
+        r = requests.post("https://api.oxapay.com/api/v2/checkout", json=payload, timeout=20).json()
+        
         if r.get("payUrl"):
-            markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔗 اضغط هنا للدفع المباشر", url=r['payUrl']))
-            bot.send_message(m.chat.id, f"✅ الفاتورة جاهزة بقيمة {m.text}$:", reply_markup=markup)
-    except: bot.send_message(m.chat.id, "⚠️ عذراً، فشل الاتصال ببوابة الدفع.")
+            markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("💳 دفع الآن (بوابة OxaPay)", url=r['payUrl']))
+            bot.send_message(m.chat.id, f"🏛 **فاتورة اشتراك VIP بقيمة {amount}$**\n\nاضغط على الزر أدناه لإتمام الدفع المباشر عبر البوابة.\nسيتم تفعيل حسابك تلقائياً بمجرد إرسال المبلغ.", reply_markup=markup)
+        else:
+            bot.send_message(m.chat.id, "⚠️ فشل في الاتصال بـ OxaPay، جرب لاحقاً.")
+    except Exception as e:
+        bot.send_message(m.chat.id, "⚠️ حدث خطأ في النظام أثناء توليد الفاتورة.")
 
 @bot.message_handler(func=lambda m: m.text == "💎 حسابي")
 def acc_info(m):
@@ -198,5 +210,5 @@ def admin_v(c):
 
 if __name__ == "__main__":
     while True:
-        try: bot.polling(none_stop=True, interval=0, timeout=50)
+        try: bot.polling(none_stop=True, interval=0, timeout=60)
         except: time.sleep(5)
