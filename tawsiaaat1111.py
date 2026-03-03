@@ -45,59 +45,58 @@ db = load_db()
 def save_db():
     with open(DB_FILE, 'w') as f: json.dump(db, f)
 
-# --- [ محرك التحليل المطور - التعديل هنا فقط ] ---
+# --- [ محرك التحليل الرباعي الدقيق ] ---
 def get_analysis(symbol):
     try:
         s = symbol.upper().replace("/", "").strip()
         if not s.endswith("USDT"): s += "USDT"
         
-        # محاولة جلب البيانات من Binance (استخدام رابط مستقر)
+        # 1. شمولية المنصات: Binance أولاً ثم MEXC
+        source = "BINANCE"
         url = f"https://api.binance.com/api/v3/klines?symbol={s}&interval=15m&limit=100"
-        r = requests.get(url, timeout=10)
-        if r.status_code != 200: return None
+        r = requests.get(url, timeout=7)
+        if r.status_code != 200:
+            source = "MEXC"
+            url = f"https://api.mexc.com/api/v3/klines?symbol={s}&interval=15m&limit=100"
+            r = requests.get(url, timeout=7)
             
         data = r.json()
-        closes = [float(c[4]) for c in data]
-        highs = [float(c[2]) for c in data]
-        lows = [float(c[3]) for c in data]
-        volumes = [float(c[5]) for c in data]
+        closes = [float(c[4]) for c in data] # السعر الحالي
+        highs = [float(c[2]) for c in data]  # المقاومات
+        lows = [float(c[3]) for c in data]   # الدعوم
         p = closes[-1]
         
+        # --- المؤشرات الأربعة بدقة ---
         # 1. المتوسط المتحرك (SMA 20)
         sma = sum(closes[-20:]) / 20
-        # 2. مؤشر RSI (القوة النسبية) - حساب دقيق لآخر 14 شمعة
-        gains = [max(0, closes[i] - closes[i-1]) for i in range(-14, 0)]
-        losses = [max(0, closes[i-1] - closes[i]) for i in range(-14, 0)]
-        avg_g = sum(gains)/14; avg_l = sum(losses)/14
-        rsi = 100 - (100 / (1 + (avg_g/avg_l if avg_l != 0 else 1)))
-        # 3. تحليل السيولة (Volume)
-        avg_vol = sum(volumes[-20:]) / 20
-        vol_pumping = volumes[-1] > avg_vol * 1.3
-        # 4. الدعوم والمقاومات
-        support = min(lows[-40:]); resistance = max(highs[-40:])
-
-        # --- خوارزمية التوصية الذكية ---
-        if rsi < 33 and p <= sma * 1.01:
-            sig, stat, emo = "🚀 شراء قوى (قاع لحظي)", "المؤشرات تشير لانفجار صعودي وشيك من منطقة دعم.", "🟢"
-            t1, t2, sl = p*1.04, p*1.08, support*0.97
-        elif rsi > 68 or (p < sma and rsi > 50):
-            sig, stat, emo = "📉 نزول متوقع (تنبيه)", "السعر متضخم أو كسر المتوسط للأسفل. تجنب الشراء.", "🔴"
-            t1, t2, sl = p*0.96, p*0.92, p*1.035
-        elif p > sma and 45 < rsi < 65:
-            sig, stat, emo = "📈 صعود مستقر", "الترند صاعد والسيولة مستمرة. الأهداف قريبة.", "🔵"
-            t1, t2, sl = resistance, resistance*1.04, sma*0.98
+        # 2. مؤشر RSI (القوة النسبية)
+        gains = [max(0, closes[i] - closes[i-1]) for i in range(1, 20)]
+        losses = [max(0, closes[i-1] - closes[i]) for i in range(1, 20)]
+        avg_g = sum(gains)/20; avg_l = sum(losses)/20
+        rs = avg_g / (avg_l if avg_l != 0 else 1)
+        rsi = 100 - (100 / (1 + rs))
+        # 3 & 4. الدعوم والمقاومات (Support & Resistance) من آخر 50 شمعة
+        sup = min(lows[-50:]); resis = max(highs[-50:])
+        
+        # تحليل الإشارة الواقعي
+        if rsi < 35 and p <= sma:
+            sig, stat = "🚀 شراء (منطقة ارتداد ذهبية)", "المؤشرات تشير لقاع فني مشبع بالبيع. نجاح متوقع جداً."
+            t1, t2, sl = p*1.045, p*1.09, sup*0.97
+        elif rsi > 65 or p >= resis:
+            sig, stat = "⚠️ منطقة جني أرباح (خطر)", "السعر متضخم عند مقاومة قوية. يفضل الخروج فوراً."
+            t1, t2, sl = p*1.01, p*1.02, p*0.99
         else:
-            sig, stat, emo = "⏳ تذبذب (انتظار)", "السوق غير واضح الاتجاه حالياً. نراقب منطقة المقاومة.", "⚪"
-            t1, t2, sl = p*1.02, p*1.05, p*0.98
+            sig, stat = "📈 اتجاه صاعد مستقر", "الزحم معتدل والترند إيجابي. السعر يستهدف المقاومة القادمة."
+            t1, t2, sl = resis, resis*1.035, sma*0.975
 
-        return (f"🏛 **رادار القابضة V17**\n━━━━━━━━━━━━━━\n"
-                f"🪙 العملة: #{s} {emo}\n💰 السعر: `{p}` | 📊 RSI: `{round(rsi,1)}`\n━━━━━━━━━━━━━━\n"
+        return (f"🏛 **رادار القابضة V17 - المحلل الذكي**\n━━━━━━━━━━━━━━\n"
+                f"🪙 العملة: #{s} | 🏛 المصدر: `{source}`\n💰 السعر الحالي: `{p}` | 📊 RSI: `{round(rsi,1)}`\n━━━━━━━━━━━━━━\n"
                 f"💡 الإشارة: **{sig}**\n📌 الحالة: {stat}\n━━━━━━━━━━━━━━\n"
-                f"🎯 هدف أول: `{round(t1, 4)}` | 🎯 هدف ثاني: `{round(t2, 4)}`\n🛡️ الوقف: `{round(sl, 4)}`\n\n"
-                f"🔗 [عرض الشارت المباشر](https://www.tradingview.com/chart/?symbol=BINANCE:{s})")
+                f"🎯 هدف أول: `{round(t1, 4)}`\n🎯 هدف ثاني: `{round(t2, 4)}`\n🛡️ الوقف: `{round(sl, 4)}`\n\n"
+                f"🔗 [عرض الشارت المباشر](https://www.tradingview.com/chart/?symbol={source}:{s})")
     except: return None
 
-# --- [ بقية الكود كما هو دون تغيير ] ---
+# --- [ واجهة المستخدم والأوامر ] ---
 def main_menu():
     mk = types.ReplyKeyboardMarkup(resize_keyboard=True)
     mk.row("🔍 تحليل عملة", "💎 حسابي")
@@ -115,22 +114,26 @@ def ana_init(m):
     uid = str(m.from_user.id)
     today = str(datetime.date.today())
     is_vip = db["vip"].get(uid, 0) > time.time()
+    
     if is_vip:
         daily = db["daily_limit"].get(uid, {"count": 0, "last_reset": today})
         if daily["last_reset"] != today: daily = {"count": 0, "last_reset": today}
         if daily["count"] >= 5:
-            bot.send_message(m.chat.id, "⚠️ **انتهت حصتك اليومية للـ VIP (5/5).**"); return
+            bot.send_message(m.chat.id, "⚠️ **انتهت حصتك اليومية للـ VIP (5/5).**\nتتجدد المحاولات تلقائياً غداً.")
+            return
     else:
         used = db["free_usage"].get(uid, 0)
         if used >= 5:
-            bot.send_message(m.chat.id, "❌ **انتهت محاولاتك المجانية (5/5).**"); return
-    msg = bot.send_message(m.chat.id, "🎯 أرسل رمز العملة (مثال: BTC):")
+            bot.send_message(m.chat.id, "❌ **انتهت محاولاتك المجانية للأبد (5/5).**\nاشترك الآن لتفعيل الرادار يومياً.")
+            return
+    
+    msg = bot.send_message(m.chat.id, "🎯 أرسل رمز العملة (مثال: SOL):")
     bot.register_next_step_handler(msg, ana_execute)
 
 def ana_execute(m):
     uid = str(m.from_user.id)
     if m.text in ["🔍 تحليل عملة", "💎 حسابي", "💳 اشتراك VIP (OxaPay)", "👨‍💻 تفعيل يدوي"]: return
-    bot.send_message(m.chat.id, "⏳ جاري تحليل الاتجاه والمؤشرات...")
+    bot.send_message(m.chat.id, "⏳ جاري فحص المؤشرات الرباعية واستخراج الأهداف...")
     res = get_analysis(m.text)
     if res:
         is_vip = db["vip"].get(uid, 0) > time.time()
@@ -142,23 +145,25 @@ def ana_execute(m):
         save_db()
         bot.send_message(m.chat.id, res, parse_mode="Markdown")
     else:
-        bot.send_message(m.chat.id, "⚠️ الرمز غير متاح حالياً. تأكد من كتابة الرمز بشكل صحيح.")
+        bot.send_message(m.chat.id, "⚠️ الرمز غير متاح حالياً أو يوجد ضغط على الشبكة.")
 
 @bot.message_handler(func=lambda m: m.text == "💳 اشتراك VIP (OxaPay)")
 def pay_setup(m):
-    msg = bot.send_message(m.chat.id, "💰 **أدخل مبلغ التفعيل (مثال: 50):**")
+    msg = bot.send_message(m.chat.id, "💰 **أدخل مبلغ التفعيل (الحد الأدنى 50$):**")
     bot.register_next_step_handler(msg, pay_final)
 
 def pay_final(m):
-    if not m.text.isdigit(): return
-    bot.send_message(m.chat.id, "⏳ جاري توليد الفاتورة...")
+    if not m.text.isdigit() or int(m.text) < 50:
+        bot.send_message(m.chat.id, "❌ يرجى إدخال مبلغ 50$ فأكثر."); return
+    
+    bot.send_message(m.chat.id, "⏳ جاري توليد فاتورة الدفع الآمنة...")
     try:
         p = {"merchant": OXA_API_KEY, "amount": int(m.text), "currency": "USDT", "network": "TRC20", "description": f"CHARGE_{m.from_user.id}"}
         r = requests.post("https://api.oxapay.com/api/v2/checkout", json=p, timeout=15).json()
         if r.get("payUrl"):
-            markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔗 رابط الدفع", url=r['payUrl']))
-            bot.send_message(m.chat.id, f"✅ الفاتورة جاهزة:", reply_markup=markup)
-    except: bot.send_message(m.chat.id, "⚠️ فشل في الاتصال بالبوابة.")
+            markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔗 اضغط هنا للدفع المباشر", url=r['payUrl']))
+            bot.send_message(m.chat.id, f"✅ الفاتورة جاهزة بقيمة {m.text}$:", reply_markup=markup)
+    except: bot.send_message(m.chat.id, "⚠️ عذراً، فشل الاتصال ببوابة الدفع.")
 
 @bot.message_handler(func=lambda m: m.text == "💎 حسابي")
 def acc_info(m):
@@ -166,29 +171,32 @@ def acc_info(m):
     is_v = db["vip"].get(uid, 0) > time.time()
     if is_v:
         c = db["daily_limit"].get(uid, {}).get("count", 0)
-        msg = f"🌟 **الحالة: VIP نشط**\n📈 استهلاك اليوم: {c}/5"
+        msg = f"🌟 **الحالة: VIP نشط**\n📅 الأيام المتبقية: {int((db['vip'][uid]-time.time())/86400)} يوم\n📈 استهلاك اليوم: {c}/5"
     else:
         c = db["free_usage"].get(uid, 0)
-        msg = f"👤 **الحالة: حساب مجاني**\n📊 الاستهلاك: {c}/5"
+        msg = f"👤 **الحالة: حساب مجاني**\n📊 المحاولات المستخدمة: {c}/5 (مدى الحياة)"
     bot.send_message(m.chat.id, msg)
 
 @bot.message_handler(func=lambda m: m.text == "👨‍💻 تفعيل يدوي")
 def manual(m):
-    bot.send_message(m.chat.id, f"أرسل لعنواننا:\n`{WALLET_ADDRESS}`\nثم أرسل الإيصال.")
+    bot.send_message(m.chat.id, f"أرسل مبلغ **50$** لعنواننا:\n`{WALLET_ADDRESS}`\nثم أرسل صورة الإيصال هنا.")
 
 @bot.message_handler(content_types=['photo'])
 def handle_receipt(m):
     btn = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("✅ تفعيل VIP", callback_data=f"v_{m.from_user.id}"))
-    bot.send_message(OWNER_ID, f"🔔 إيصال من {m.from_user.id}", reply_markup=btn)
+    bot.send_message(OWNER_ID, f"🔔 إيصال دفع جديد من {m.from_user.id}", reply_markup=btn)
     bot.forward_message(OWNER_ID, m.chat.id, m.message_id)
-    bot.send_message(m.chat.id, "⏳ جاري مراجعة الإيصال...")
+    bot.send_message(m.chat.id, "⏳ تم استلام الصورة، جاري مراجعتها من قبل الإدارة.")
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("v_"))
 def admin_v(c):
     u = c.data.split("_")[1]
     db["vip"][u] = time.time() + (30 * 86400)
     db["daily_limit"][u] = {"count": 0, "last_reset": str(datetime.date.today())}
-    save_db(); bot.send_message(u, "🌟 تم تفعيل VIP بنجاح."); bot.answer_callback_query(c.id, "تم")
+    save_db(); bot.send_message(u, "🌟 مبروك! تم تفعيل اشتراكك VIP بنجاح.")
+    bot.answer_callback_query(c.id, "تم التفعيل")
 
 if __name__ == "__main__":
-    bot.polling(none_stop=True)
+    while True:
+        try: bot.polling(none_stop=True, interval=0, timeout=50)
+        except: time.sleep(5)
