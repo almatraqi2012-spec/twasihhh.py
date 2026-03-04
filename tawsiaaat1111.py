@@ -119,7 +119,7 @@ def ana_init(m):
     user_usage = db["usage"].get(uid, {"count": 0, "date": today})
     if user_usage["date"] != today: user_usage = {"count": 0, "date": today}
     
-    limit = 5 if is_vip else 1
+    limit = 5 if is_vip else 5
     if user_usage["count"] >= limit:
         bot.send_message(m.chat.id, "⚠️ انتهت حصتك اليومية.")
         return
