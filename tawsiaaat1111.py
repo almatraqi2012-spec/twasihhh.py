@@ -187,5 +187,34 @@ def run_flask(): app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
 threading.Thread(target=run_flask, daemon=True).start()
 
 if __name__ == "__main__":
-    print("🐲 الرادار V36 يعمل الآن...")
-    bot.infinity_polling()
+    # --- [ إعداد Flask ليرد على رندر ويمنع الـ 409 ] ---
+from flask import Flask
+import threading
+
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "الرادار V36 يعمل بنجاح! 🐲"
+
+def run_flask():
+    # رندر يحتاج بورت 10000 أو البورت الذي يحدده هو
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
+
+if __name__ == "__main__":
+    # 1. تشغيل Flask في "خيط" منفصل ليرد على رندر ويقول له "أنا حي"
+    threading.Thread(target=run_flask, daemon=True).start()
+    
+    print("🐲 الرادار V36: جاري تنظيف الاتصالات القديمة...")
+    
+    # 2. حذف أي اتصال قديم فوراً
+    try:
+        bot.remove_webhook()
+        time.sleep(2) # استراحة قصيرة جداً لقتل العمليات المعلقة
+        
+        print("🚀 انطلاق البوت في بيئة الويب المجانية...")
+        # 3. تشغيل البوت مع skip_pending لتفادي الزحام
+        bot.infinity_polling(skip_pending=True, timeout=90)
+    except Exception as e:
+        print(f"⚠️ خطأ: {e}")
