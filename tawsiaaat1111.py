@@ -9,7 +9,7 @@ dns.resolver.default_resolver.nameservers = ['8.8.8.8']
 app = Flask(__name__)
 
 # ================= [ ⚙️ 2. الإعدادات الكبرى - ضع بياناتك هنا ] =================
-API_TOKEN = '8461494562:AAF3PnajVvXjzL1-aC8RxJwHmP5ahmTIvcs'
+API_TOKEN = '8461494562:AAEiYC05gZysQqJPyONhs3Kdw5vhy54TyGk'
 OWNER_ID = 6016547718 
 OXAPAY_KEY = "CE8H0F-ISXBD2-RXHALY-KZXUZU"
 WALLET_ADDRESS = "TLtLuhkU2kkkR1Wz1TtrBTpoNRTNviYpsA"
