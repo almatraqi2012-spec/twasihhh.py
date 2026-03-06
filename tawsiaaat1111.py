@@ -1,4 +1,4 @@
-import requests, telebot, time, os, threading
+هذاimport requests, telebot, time, os, threading
 import pymongo, dns.resolver
 from telebot import types
 from flask import Flask
@@ -159,12 +159,7 @@ def admin_confirm(c):
 def home(): return "V36 LEGEND IS RUNNING... 🐲"
 
 def run_flask():
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
-
-if __name__ == "__main__":
-    threading.Thread(target=run_flask, daemon=True).start()
-    while True:
-        try:
-            bot.remove_webhook()
-            bot.infinity_polling(skip_pending=True, timeout=80)
-        except: time.sleep(5)
+    # رندر أحياناً يطلب 8080 وأحياناً 10000
+    # هذا السطر يجعل الكود يختار البورت الذي يطلبه رندر تلقائياً
+    port = int(os.environ.get("PORT", 8080)) 
+    app.run(host='0.0.0.0', port=port)
