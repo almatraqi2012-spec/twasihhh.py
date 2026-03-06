@@ -9,9 +9,10 @@ dns.resolver.default_resolver.nameservers = ['8.8.8.8']
 app = Flask(__name__)
 
 # ================= [ ⚙️ الإعدادات الكبرى - الرادار الأسطوري ] =================
+# التوكن الذي أرفقته في رسالتك الأخيرة
 API_TOKEN = '8461494562:AAEiYC05gZysQqJPyONhs3Kdw5vhy54TyGk'
 OWNER_ID = 6016547718 
-OXAPAY_KEY = "CE8H0F-ISXBD2-RXHALY-KZXUZU" # مفتاح الأوكساباي الخاص بك
+OXAPAY_KEY = "CE8H0F-ISXBD2-RXHALY-KZXUZU" 
 WALLET_ADDRESS = "TLtLuhkU2kkkR1Wz1TtrBTpoNRTNviYpsA"
 VIP_PRICE = 50.0 
 
@@ -23,7 +24,8 @@ try:
     db = m_client['radar_v36_legend']
     users_col = db['users']
     print("✅ تم الربط بالخزنة السحابية بنجاح!")
-except: print("⚠️ خطأ في الاتصال بالقاعدة")
+except: 
+    print("⚠️ خطأ في الاتصال بالقاعدة")
 
 bot = telebot.TeleBot(API_TOKEN)
 
@@ -38,25 +40,20 @@ def get_legend_analysis(symbol):
         if 'code' in r: # البحث في MEXC إذا لم يتوفر في بينانس
             r = requests.get(f"https://www.mexc.com/open/api/v2/market/kline?symbol={s}&interval=60m&limit=100").json()['data']
         
-        # تحليل الشمعات
         closes = [float(c[4]) for c in r]
         vols = [float(c[5]) for c in r]
-        p = closes[-1] # السعر الحالي
+        p = closes[-1] 
         
-        # معادلات القوة (واقعية 100%)
         ema20 = sum(closes[-20:]) / 20
         ema50 = sum(closes[-50:]) / 50
         avg_vol = sum(vols[-20:]) / 20
         
-        # توقع الشمعة القادمة
         if p > ema20 and vols[-1] > avg_vol:
-            # حالة صعود حقيقي وسيولة
             signal = "🟢 **دخول انفجاري (صعود مؤكد)**"
-            prob = "92%" # نسبة الثقة بناءً على السيولة
+            prob = "92%" 
             targets = f"🎯 هدف 1: `{round(p*1.03, 4)}` \n🎯 هدف 2: `{round(p*1.07, 4)}`"
             sl = f"🛡️ الوقف: `{round(p*0.96, 4)}`"
         elif p < ema20 and vols[-1] > avg_vol:
-            # حالة هبوط وتصريف
             signal = "🔴 **خروج فوري (هبوط محتم)**"
             prob = "88%"
             targets = "⚠️ لا ينصح بالدخول، السعر في اتجاه هابط."
@@ -68,7 +65,8 @@ def get_legend_analysis(symbol):
             sl = "---"
 
         return f"🐲 **تحليل الرادار الأسطوري V36**\n━━━━━━━━━━━━━━\n🪙 العملة: `{s}`\n💰 السعر: `{p}$` \n📊 الإشارة: {signal}\n🔥 قوة التوقع: `{prob}`\n\n{targets}\n{sl}\n━━━━━━━━━━━━━━\n⚠️ التحليل مبني على تقاطع المتوسطات وحجم السيولة اللحظي."
-    except: return "⚠️ عذراً، العملة غير موجودة أو هناك ضغط على بيانات المنصات."
+    except: 
+        return "⚠️ عذراً، العملة غير موجودة أو هناك ضغط على بيانات المنصات."
 
 # --- [ 🕹️ نظام الأزرار والقوائم ] ---
 def main_menu(uid):
@@ -118,7 +116,8 @@ def vip_act(c):
     if user['balance'] >= VIP_PRICE:
         users_col.update_one({"user_id": uid}, {"$inc": {"balance": -VIP_PRICE}, "$set": {"vip": True}})
         bot.send_message(uid, "🌟 **مبروك! تم تفعيل الرادار الأسطوري لمدة شهر.**")
-    else: bot.answer_callback_query(c.id, "❌ رصيدك غير كافٍ (تحتاج 50$)")
+    else: 
+        bot.answer_callback_query(c.id, "❌ رصيدك غير كافٍ (تحتاج 50$)")
 
 @bot.message_handler(func=lambda m: m.text == "💳 شحن الرصيد")
 def pay_menu(m):
@@ -154,12 +153,26 @@ def admin_confirm(c):
     bot.send_message(target, "🌟 **تم شحن حسابك بنجاح!** يمكنك الآن تفعيل الـ VIP.")
     bot.answer_callback_query(c.id, "تم الشحن ✅")
 
-# --- [ 🌐 نظام الحماية والتشغيل ] ---
+# --- [ 🌐 نظام الحماية والتشغيل النهائي لـ Render ] ---
 @app.route('/')
-def home(): return "V36 LEGEND IS RUNNING... 🐲"
+def home(): 
+    return "V36 LEGEND IS RUNNING... 🐲"
 
 def run_flask():
-    # رندر أحياناً يطلب 8080 وأحياناً 10000
-    # هذا السطر يجعل الكود يختار البورت الذي يطلبه رندر تلقائياً
+    # سحب البورت من رندر تلقائياً أو استخدام 8080
     port = int(os.environ.get("PORT", 8080)) 
     app.run(host='0.0.0.0', port=port)
+
+if __name__ == "__main__":
+    # تشغيل Flask في خيط منفصل ليرد على رندر
+    threading.Thread(target=run_flask, daemon=True).start()
+    
+    print("🐲 الرادار الأسطوري V36: جاري تنظيف الاتصالات...")
+    while True:
+        try:
+            bot.remove_webhook()
+            # استخدام infinity_polling لضمان عدم توقف البوت
+            bot.infinity_polling(skip_pending=True, timeout=90)
+        except Exception as e:
+            print(f"🔄 إعادة تشغيل تلقائية بسبب: {e}")
+            time.sleep(5)
