@@ -21,7 +21,7 @@ MONGO_URL = "mongodb+srv://USER:PASS@cluster.mongodb.net/radar_db"
 m_client = pymongo.MongoClient(MONGO_URL, tlsAllowInvalidCertificates=True)
 db = m_client['radar_v36']
 users_col = db['users']
-# =========================================================================
+# ========================================================================
 
 bot = telebot.TeleBot(API_TOKEN)
 
