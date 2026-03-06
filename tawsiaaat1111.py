@@ -1,4 +1,4 @@
-هذاimport requests, telebot, time, os, threading
+import requests, telebot, time, os, threading
 import pymongo, dns.resolver
 from telebot import types
 from flask import Flask
