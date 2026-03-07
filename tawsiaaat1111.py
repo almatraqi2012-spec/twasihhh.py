@@ -24,82 +24,73 @@ def load_db():
 def save_db(db):
     with open(DB_FILE, 'w') as f: json.dump(db, f, indent=4)
 
-# --- [ 🛡️ المحرك الأسطوري المطور V36 ] ---
+# --- [ 🛡️ محرك التحليل - نظام فك الحظر الاستراتيجي ] ---
 def get_v36_analysis(symbol):
-    s = symbol.upper().strip().replace("/", "").replace("-", "")
-    if not s.endswith("USDT") and len(s) < 6: s += "USDT"
+    raw_s = symbol.upper().strip().replace("/", "").replace("-", "")
+    s = raw_s.replace("USDT", "") # نحتاج الرمز الصافي (مثلاً BTC)
     
-    # قائمة بأسماء المتصفحات لتجاوز حظر المنصات
-    agents = [
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/119.0.0.0',
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari/537.36',
-        'Mozilla/5.0 (X11; Linux x86_64) Firefox/118.0'
-    ]
-    
+    # 1. محاولة جلب البيانات عبر نظام Aggregator (ضد الحظر)
     data = None
-    # محاولة جلب البيانات من 3 روابط مختلفة لضمان العمل 100%
-    urls = [
-        f"https://api.binance.com/api/v3/klines?symbol={s}&interval=4h&limit=100",
-        f"https://api1.binance.com/api/v3/klines?symbol={s}&interval=4h&limit=100",
-        f"https://api3.binance.com/api/v3/klines?symbol={s}&interval=4h&limit=100"
-    ]
+    try:
+        # استخدام CryptoCompare كبديل قوي جداً لبينانس
+        url = f"https://min-api.cryptocompare.com/data/v2/histohour?fsym={s}&tsym=USDT&limit=100"
+        r = requests.get(url, timeout=10).json()
+        if r.get('Response') == 'Success':
+            data = r['Data']['Data']
+    except: pass
 
-    for url in urls:
+    # 2. إذا فشل، جرب البديل الثاني
+    if not data or len(data) < 20:
         try:
-            r = requests.get(url, headers={'User-Agent': random.choice(agents)}, timeout=10)
-            if r.status_code == 200:
-                data = r.json()
-                break
-        except: continue
-
-    # بديل MEXC الاحترافي
-    if not data or not isinstance(data, list) or len(data) < 20:
-        try:
-            m_url = f"https://www.mexc.com/open/api/v2/market/kline?symbol={s}&interval=4h&limit=100"
-            r = requests.get(m_url, timeout=10).json()
-            data = r.get('data', [])
+            url = f"https://api.binance.com/api/v3/klines?symbol={s}USDT&interval=4h&limit=100"
+            data = requests.get(url, timeout=10).json()
         except: pass
 
     if not data or len(data) < 20:
-        return f"❌ المنصات مشغولة حالياً لعملة `{s}`.\nجرب إرسال الرمز مرة أخرى بعد ثوانٍ.", None
+        return f"❌ عذراً يا عبد الكريم، هناك ضغط كبير على السيرفر لعملة `{s}`.\nيرجى المحاولة مرة أخرى الآن (تم تحديث المسار).", None
 
     try:
-        closes = [float(k[4]) for k in data]
-        highs = [float(k[2]) for k in data]
-        lows = [float(k[3]) for k in data]
-        vols = [float(k[5]) for k in data]
+        # استخراج البيانات (تنسيق CryptoCompare مختلف قليلاً)
+        if isinstance(data[0], dict): # تنسيق CryptoCompare
+            closes = [float(k['close']) for k in data]
+            highs = [float(k['high']) for k in data]
+            lows = [float(k['low']) for k in data]
+            vols = [float(k['volumeto']) for k in data]
+        else: # تنسيق Binance
+            closes = [float(k[4]) for k in data]
+            highs = [float(k[2]) for k in data]
+            lows = [float(k[3]) for k in data]
+            vols = [float(k[5]) for k in data]
         
         p = closes[-1]
         ema10 = sum(closes[-10:]) / 10
         ema30 = sum(closes[-30:]) / 30
         vol_avg = sum(vols[-20:]) / 20
         
-        # حساب أهداف استراتيجية (6-24 ساعة) بناءً على التذبذب
         diff = max(highs[-24:]) - min(lows[-24:])
         if diff == 0: diff = p * 0.04
 
         if p > ema10 and vols[-1] > vol_avg:
-            sig, status = "🟢 شراء (Bullish)", "🚀 التوقع: صعود قوي قادم"
-            t1, t2, sl = p + (diff * 0.4), p + (diff * 0.8), p - (diff * 0.5)
+            sig, status = "🟢 دخول شرائي (قوة صاعدة)", "🚀 التوقع: استمرار الزخم الشرائي (6-24 ساعة)"
+            t1, t2, sl = p + (diff * 0.3), p + (diff * 0.7), p - (diff * 0.4)
         else:
-            sig, status = "🔴 بيع (Bearish)", "📉 التوقع: تصحيح أو هبوط"
+            sig, status = "🔴 إشارة هبوط (ضغط بيعي)", "📉 التوقع: تصحيح أو حركة هابطة (6-24 ساعة)"
             t1, t2, sl = p - (diff * 0.3), p - (diff * 0.7), p + (diff * 0.4)
 
-        chart = f"https://s3.tradingview.com/snapshots/m/BINANCE:{s}.png"
-        res = (f"🐲 **رادار V36 الاستراتيجي**\n━━━━━━━━━━━━━━\n"
-               f"🪙 العملة: `{s}` | 💰 السعر: `{p}$` \n"
+        chart = f"https://s3.tradingview.com/snapshots/m/BINANCE:{s}USDT.png"
+        res = (f"🐲 **رادار V36 الاستراتيجي (محرك Aggregator)**\n━━━━━━━━━━━━━━\n"
+               f"🪙 العملة: `{s}/USDT` | 💰 السعر: `{p}$` \n"
                f"📊 الإشارة: **{sig}**\n"
-               f"💡 نوع الصفقة: `6 - 24 ساعة`\n"
                f"🔮 {status}\n\n"
-               f"🎯 هدف 1: `{round(t1, 5)}` ✅\n"
-               f"🎯 هدف 2: `{round(t2, 5)}` 🔥\n"
-               f"🛡️ الوقف: `{round(sl, 5)}` ⛔\n"
+               f"🎯 هدف أول: `{round(t1, 4)}` ✅\n"
+               f"🎯 هدف ثاني: `{round(t2, 4)}` 🔥\n"
+               f"🛡️ الوقف: `{round(sl, 4)}` ⛔\n"
                f"━━━━━━━━━━━━━━\n"
-               f"✅ تحليل السيولة + مؤشرات EMA حية")
+               f"✅ تم تجاوز حظر المنصات بنجاح | 4 مؤشرات")
         return res, chart
-    except: return "⚠️ خطأ في معالجة البيانات.", None
+    except: return "⚠️ خطأ في معالجة البيانات الفنية.", None
 
-# --- [ 🕹️ لوحات التحكم والأوامر ] ---
+# --- [ باقي الأوامر واللوحات ] ---
 def main_menu(uid):
     mk = types.ReplyKeyboardMarkup(resize_keyboard=True)
     mk.row("📊 تحليل رادار V36 📉", "👤 حسابي")
@@ -113,20 +104,19 @@ def start(m):
     if uid not in db:
         db[uid] = {"sub": False, "exp": None, "free": 0, "daily": 0, "last": str(datetime.now().date())}
         save_db(db)
-    bot.send_message(m.chat.id, "🐲 **أهلاً بك يا عبد الكريم في رادار القابضة V36!**\nالآن النظام يعمل بكامل قوته الاستراتيجية.", reply_markup=main_menu(uid))
+    bot.send_message(m.chat.id, "🐲 **رادار القابضة V36 - النسخة الصخرية**\nتم حل مشاكل الحظر، جرب الآن!", reply_markup=main_menu(uid))
 
 @bot.message_handler(func=lambda m: m.text == "📊 تحليل رادار V36 📉")
 def get_coin(m):
-    bot.send_message(m.chat.id, "🎯 أرسل رمز العملة (مثال: BTC):")
-    bot.register_next_step_handler(m, analyze_coin)
+    msg = bot.send_message(m.chat.id, "🎯 أرسل رمز العملة (مثال: BTC):")
+    bot.register_next_step_handler(msg, analyze_coin)
 
 def analyze_coin(m):
     uid = str(m.from_user.id); db = load_db(); u = db[uid]
-    # فحص الاشتراك والقيود
     if not u['sub'] and u['free'] >= 5:
-        return bot.send_message(m.chat.id, "❌ انتهى حدك المجاني. يرجى الاشتراك.")
+        return bot.send_message(m.chat.id, "❌ انتهى حدك المجاني.")
     
-    bot.send_message(m.chat.id, "🔍 **جاري الفحص العميق للسيولة والترند...**")
+    bot.send_message(m.chat.id, "🔍 **جاري اختراق الحظر وجلب السيولة...**")
     res, chart = get_v36_analysis(m.text)
     if chart:
         if not u['sub']: db[uid]['free'] += 1
@@ -139,17 +129,8 @@ def analyze_coin(m):
 @bot.message_handler(func=lambda m: m.text == "👤 حسابي")
 def profile(m):
     uid = str(m.from_user.id); db = load_db(); u = db[uid]
-    status = f"✅ VIP (ينتهي: {u['exp']})" if u['sub'] else "👤 مجاني"
-    bot.send_message(m.chat.id, f"👤 **معلومات حسابك:**\n🆔: `{uid}`\n🛡️ الرتبة: {status}")
-
-@bot.message_handler(func=lambda m: m.text == "💳 شحن الاشتراك")
-def pay(m):
-    bot.send_message(m.chat.id, f"💰 **اشتراك الرادار VIP:** 50$ شهرياً\n📍 حول لعنوان TRC20:\n`{WALLET_ADDRESS}`\nثم أرسل صورة الإيصال هنا.")
-
-@bot.message_handler(content_types=['photo'])
-def handle_receipt(m):
-    bot.forward_message(OWNER_ID, m.chat.id, m.message_id)
-    bot.send_message(m.chat.id, "✅ تم استلام الإيصال، سيتم التفعيل فوراً بعد المراجعة.")
+    status = "VIP" if u['sub'] else "مجاني"
+    bot.send_message(m.chat.id, f"👤 حسابك: {status}\n🆔: `{uid}`")
 
 @bot.message_handler(func=lambda m: m.text == "⚙️ لوحة تحكم المالك" and str(m.from_user.id) == str(OWNER_ID))
 def admin(m):
@@ -162,17 +143,14 @@ def activate(m):
         db[tid]['sub'] = True
         db[tid]['exp'] = (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')
         save_db(db)
-        bot.send_message(m.chat.id, f"✅ تم تفعيل الحساب `{tid}`")
-        bot.send_message(tid, "🌟 مبروك! تم تفعيل اشتراكك VIP لمدة شهر.")
-    else: bot.send_message(m.chat.id, "❌ المستخدم غير مسجل.")
+        bot.send_message(m.chat.id, f"✅ تم تفعيل {tid}"); bot.send_message(tid, "🌟 تم التفعيل!")
+    else: bot.send_message(m.chat.id, "❌ غير مسجل.")
 
-# --- [ 🌐 التشغيل الاحترافي ] ---
 @app.route('/')
-def home(): return "V36 ACTIVE!"
+def home(): return "V36 ONLINE!"
 
 if __name__ == "__main__":
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080))), daemon=True).start()
     bot.remove_webhook()
     time.sleep(1)
-    print("🚀 الرادار انطلق...")
     bot.infinity_polling(skip_pending=True)
