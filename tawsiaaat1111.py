@@ -31,69 +31,71 @@ def get_advanced_analysis(symbol):
     s = symbol.upper().strip().replace("/", "").replace("-", "")
     if not s.endswith("USDT"): s += "USDT"
     
-    # محاولة جلب البيانات من 3 منصات لضمان عدم الفشل
-    platforms = [
-        f"https://api.binance.com/api/v3/klines?symbol={s}&interval=1h&limit=100",
-        f"https://www.mexc.com/open/api/v2/market/kline?symbol={s}&interval=60m&limit=100",
-        f"https://api.gateio.ws/api/v4/spot/candlesticks?currency_pair={s.replace('USDT', '_USDT')}&interval=1h"
-    ]
-    
-    data = None
-    source = ""
-    for url in platforms:
-        try:
-            r = requests.get(url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'}).json()
-            # فحص هيكلية البيانات لكل منصة
-            res = r if isinstance(r, list) else r.get('data', [])
-            if res and len(res) > 50:
-                data = res
-                source = "Binance" if "binance" in url else ("MEXC" if "mexc" in url else "Gate.io")
-                break
-        except: continue
-
-    if not data:
-        return "❌ **لم يتم العثور على العملة!**\nتأكد من الرمز (مثل: BTC, SOL, PEPE).", None
-
+    # جلب البيانات (Binance أولاً ثم البدائل)
+    url = f"https://api.binance.com/api/v3/klines?symbol={s}&interval=1h&limit=100"
     try:
-        closes = [float(k[4]) for k in data]
-        vols = [float(k[5]) for k in data]
+        r = requests.get(url, timeout=10).json()
+        if 'code' in r: # تجربة MEXC
+            r = requests.get(f"https://www.mexc.com/open/api/v2/market/kline?symbol={s}&interval=60m&limit=100").json()['data']
+        
+        closes = [float(k[4]) for k in r]
+        vols = [float(k[5]) for k in r]
+        highs = [float(k[2]) for k in r]
+        lows = [float(k[3]) for k in r]
         p = closes[-1]
         
-        # مؤشرات V36: EMA + RSI + السيولة + الزخم
-        ema20 = sum(closes[-20:]) / 20
+        # --- [ تطوير المؤشرات ليكون البوت أذكى ] ---
+        ema10 = sum(closes[-10:]) / 10
+        ema30 = sum(closes[-30:]) / 30
         vol_avg = sum(vols[-20:]) / 20
-        up = sum([max(0, closes[i] - closes[i-1]) for i in range(-14, 0)])
-        down = sum([max(0, closes[i-1] - closes[i]) for i in range(-14, 0)])
-        rsi = 100 - (100 / (1 + (up/down if down != 0 else 1)))
-        
-        # منطق التوقع (القرار الأسطوري)
-        if p > ema20 and vols[-1] > vol_avg and rsi < 75:
-            sig, pred = "🟢 شراء قوي (اختراق)", "🚀 الشمعة القادمة: خضراء صاعدة"
-            t1, t2, sl = p*1.04, p*1.08, p*0.95
-        elif p < ema20 and vols[-1] > vol_avg:
-            sig, pred = "🔴 بيع (ضغط تصريفي)", "📉 الشمعة القادمة: حمراء هابطة"
-            t1, t2, sl = p*0.96, p*0.92, p*1.05
-        else:
-            sig, pred = "🟡 تذبذب (انتظار)", "⚖️ الشمعة القادمة: غير مستقرة"
-            t1, t2, sl = "---", "---", "---"
+        rsi = 50 # قيمة افتراضية في حال فشل الحساب
+        try:
+            up = sum([max(0, closes[i] - closes[i-1]) for i in range(-14, 0)])
+            down = sum([max(0, closes[i-1] - closes[i]) for i in range(-14, 0)])
+            rsi = 100 - (100 / (1 + (up/down if down != 0 else 1)))
+        except: pass
+
+        # --- [ منطق التوصية الجريء - القناص ] ---
+        # الحالة 1: صعود واضح أو بداية صعود
+        if p > ema10 or (rsi < 35 and vols[-1] > vol_avg):
+            sig = "🟢 إشارة شراء (صعود متوقع)"
+            pred = "🚀 الشمعة القادمة: خضراء صاعدة بإذن الله"
+            # حساب أهداف واقعية بناءً على التذبذب (ATR مبسط)
+            diff = max(highs[-10:]) - min(lows[-10:])
+            t1 = p + (diff * 0.5)
+            t2 = p + diff
+            sl = p - (diff * 0.6)
+            
+        # الحالة 2: هبوط واضح أو تشبع شرائي
+        elif p < ema10 or rsi > 70:
+            sig = "🔴 إشارة هبوط (تصحيح/بيع)"
+            pred = "📉 الشمعة القادمة: حمراء هابطة"
+            diff = max(highs[-10:]) - min(lows[-10:])
+            t1 = p - (diff * 0.4)
+            t2 = p - (diff * 0.8)
+            sl = p + (diff * 0.5)
+            
+        else: # حالة التذبذب الضيق جداً
+            sig = "🟡 تذبذب جانبي (مراقبة)"
+            pred = "⚖️ الشمعة القادمة: حركة عرضية"
+            t1, t2, sl = p * 1.02, p * 1.05, p * 0.97
 
         chart = f"https://s3.tradingview.com/snapshots/m/BINANCE:{s}.png"
         
-        text = (f"🐲 **رادار V36 الأسطوري - {source}**\n"
+        text = (f"🐲 **رادار V36 الأسطوري (Turbo)**\n"
                 f"━━━━━━━━━━━━━━\n"
                 f"🪙 العملة: `{s}` | 💰 السعر: `{p}$` \n"
                 f"📈 الإشارة: **{sig}**\n"
                 f"🔮 التوقع: `{pred}`\n"
-                f"🌡️ RSI: `{round(rsi,1)}` | 🌊 السيولة: `{'🔥 عالية' if vols[-1]>vol_avg else '⚖️ متوسطة'}`\n\n"
-                f"🎯 هدف 1: `{t1}`\n"
-                f"🎯 هدف 2: `{t2}`\n"
-                f"🛡️ الوقف: `{sl}`\n"
+                f"🌡️ RSI: `{round(rsi,1)}` | 🌊 السيولة: `{'🔥 قوية' if vols[-1]>vol_avg else '⚖️ هادئة'}`\n\n"
+                f"🎯 هدف 1: `{round(t1, 5)}` ✅\n"
+                f"🎯 هدف 2: `{round(t2, 5)}` 🔥\n"
+                f"🛡️ الوقف: `{round(sl, 5)}` ⛔\n"
                 f"━━━━━━━━━━━━━━\n"
-                f"⏰ التحديث: `{datetime.now().strftime('%H:%M:%S')}`")
+                f"✅ تحليل سيولة + 4 مؤشرات حية")
         return text, chart
-    except:
-        return "⚠️ حدث خطأ فني في تشريح البيانات.", None
-
+    except Exception as e:
+        return f"⚠️ خطأ في جلب بيانات `{symbol}`. تأكد من الرمز الصحيح.", None
 # --- [ 🕹️ لوحات التحكم والأزرار ] ---
 def main_menu(uid):
     mk = types.ReplyKeyboardMarkup(resize_keyboard=True)
