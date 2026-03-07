@@ -1,155 +1,169 @@
-import requests, telebot, time, os, threading, json, random
-from datetime import datetime, timedelta
+import requests, telebot, time, json, os, datetime, random, threading
+import pymongo, dns.resolver
 from telebot import types
-from flask import Flask
+from flask import Flask, request
 
+# --- [ حل مشكلة DNS في الترمكس ] ---
+dns.resolver.default_resolver = dns.resolver.Resolver(configure=False)
+dns.resolver.default_resolver.nameservers = ['8.8.8.8']
+
+# --- [ إعداد السيرفر للشحن التلقائي ] ---
 app = Flask(__name__)
+@app.route('/')
+def home(): return "Radar V35 PRO - ACTIVE"
 
-# ================= [ ⚙️ الإعدادات الكبرى ] =================
+# ================= [ ⚙️ الإعدادات ] =================
 API_TOKEN = '8461494562:AAEgsbKEI93_C3TNb8B9i9D99arx7QwPg9M'
 OWNER_ID = 6016547718 
-OXAPAY_KEY = "CE8H0F-ISXBD2-RXHALY-KZXUZU" 
-WALLET_ADDRESS = "TLtLuhkU2kkkR1Wz1TtrBTpoNRTNviYpsA"
-DB_FILE = "radar_v36_final.json"
+OXAPAY_KEY = "CE8H0F-ISXBD2-RXHALY-KZXUZU"
+# السعر: 50 دولار لشهر VIP
+VIP_PRICE = 50.0
 
-bot = telebot.TeleBot(API_TOKEN, parse_mode="Markdown")
+# قاعدة البيانات (استبدل USER و PASS ببياناتك)
+MONGO_URL = "mongodb+srv://USER:PASS@cluster.mongodb.net/radar_db" 
+m_client = pymongo.MongoClient(MONGO_URL, tlsAllowInvalidCertificates=True)
+db = m_client['radar_v35']
+users_col = db['users'] # لتخزين الرصيد والبيانات
+# ===================================================
 
-# --- [ 💾 إدارة البيانات ] ---
-def load_db():
-    if not os.path.exists(DB_FILE): return {}
+bot = telebot.TeleBot(API_TOKEN)
+
+# --- [ ويب هوك الشحن التلقائي ] ---
+@app.route('/webhook/oxapay', methods=['POST'])
+def oxapay_webhook():
+    data = request.json
+    if data.get('status') == 'Paid':
+        uid = int(data.get('description'))
+        amount = float(data.get('amount'))
+        # تفعيل VIP تلقائياً لمدة 30 يوم
+        expiry = time.time() + (30 * 86400)
+        users_col.update_one({"user_id": uid}, {"$set": {"vip_expiry": expiry}}, upsert=True)
+        bot.send_message(uid, f"✅ **تم الشحن والتفعيل تلقائياً!**\nتم إضافة {amount}$ وتفعيل باقة VIP لمدة 30 يوم.")
+    return "OK", 200
+
+def run_flask(): app.run(host='0.0.0.0', port=8080)
+threading.Thread(target=run_flask, daemon=True).start()
+
+# --- [ محرك التحليل الفلترة الحديدية V35 ] ---
+def get_v35_analysis(symbol):
+    s = symbol.upper().replace("/", "").strip()
+    if not s.endswith("USDT"): s += "USDT"
+    
+    url = f"https://api.binance.com/api/v3/klines?symbol={s}&interval=1h&limit=100"
     try:
-        with open(DB_FILE, 'r') as f: return json.load(f)
-    except: return {}
-
-def save_db(db):
-    with open(DB_FILE, 'w') as f: json.dump(db, f, indent=4)
-
-# --- [ 🛡️ محرك التحليل الاحترافي - نظام التجاوز ] ---
-def get_v36_analysis(symbol):
-    s = symbol.upper().strip().replace("/", "").replace("-", "")
-    if not s.endswith("USDT") and len(s) < 6: s += "USDT"
-    
-    # قائمة بروابط API مختلفة لضمان الوصول
-    urls = [
-        f"https://api.binance.com/api/v3/klines?symbol={s}&interval=4h&limit=100",
-        f"https://api1.binance.com/api/v3/klines?symbol={s}&interval=4h&limit=100",
-        f"https://api3.binance.com/api/v3/klines?symbol={s}&interval=4h&limit=100"
-    ]
-    
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-    }
-    
-    data = None
-    for url in urls:
-        try:
-            r = requests.get(url, headers=headers, timeout=10)
-            if r.status_code == 200:
-                data = r.json()
-                break
-        except: continue
-
-    if not data or not isinstance(data, list) or len(data) < 20:
-        return f"⚠️ عذراً، لم نتمكن من سحب بيانات `{s}` من السوق حالياً. يرجى إعادة المحاولة.", None
-
-    try:
-        # استخراج البيانات بدقة متناهية
+        r = requests.get(url, timeout=10)
+        data = r.json()
         closes = [float(c[4]) for c in data]
-        highs = [float(c[2]) for c in data]
-        lows = [float(c[3]) for c in data]
-        vols = [float(c[5]) for c in data]
         
-        p = closes[-1] # السعر الحالي
-        
-        # المؤشرات الـ 4
-        ema10 = sum(closes[-10:]) / 10
-        ema30 = sum(closes[-30:]) / 30
-        vol_avg = sum(vols[-20:]) / 20
-        
-        # حساب RSI دقيق
-        up = [max(0, closes[i] - closes[i-1]) for i in range(-14, 0)]
-        down = [max(0, closes[i-1] - closes[i]) for i in range(-14, 0)]
-        rs = (sum(up)/14) / (sum(down)/14) if sum(down) != 0 else 1
+        # 1. حساب RSI
+        diff = [closes[i] - closes[i-1] for i in range(1, len(closes))]
+        gain = sum([d for d in diff if d > 0]) / 14
+        loss = abs(sum([d for d in diff if d < 0])) / 14
+        rs = gain / (loss if loss != 0 else 1)
         rsi = 100 - (100 / (1 + rs))
 
-        # حساب الأهداف بناءً على تذبذب 48 ساعة (ATR استراتيجي)
-        atr = max(highs[-12:]) - min(lows[-12:])
-        if atr == 0: atr = p * 0.05
+        # 2. حساب EMA 20 & 50
+        ema_20 = sum(closes[-20:]) / 20
+        ema_50 = sum(closes[-50:]) / 50
+        
+        # 3. السعر الحالي والزخم
+        p = closes[-1]
+        chart_url = f"https://s3.tradingview.com/snapshots/m/BINANCE:{s}.png"
 
-        if p > ema10 and rsi < 70 and vols[-1] > vol_avg:
-            sig, color = "🟢 إشارة دخول (ترند صاعد)", "خضراء 🚀"
-            t1, t2, sl = p + (atr * 0.3), p + (atr * 0.7), p - (atr * 0.4)
-        elif p < ema10 or rsi > 70:
-            sig, color = "🔴 إشارة هبوط (تصحيح/بيع)", "حمراء 📉"
-            t1, t2, sl = p - (atr * 0.3), p - (atr * 0.6), p + (atr * 0.4)
+        # --- [ منطق الفلترة المربوعة ] ---
+        # شراء: السعر فوق EMA20 و EMA50 + RSI بين 40 و 60 (بداية انفجار)
+        if p > ema_20 and p > ema_50 and 40 < rsi < 65:
+            type_d, sig, emo = "LONG (شراء)", "🟢 دخول قوي", "🚀"
+            stat = "تم تأكيد الاتجاه الصاعد بـ 4 مؤشرات. السيولة تتدفق الآن."
+            t1, t2, sl = p*1.03, p*1.07, p*0.96
+        # بيع: السعر تحت EMA20 و EMA50 + RSI بين 40 و 60 (بداية انهيار)
+        elif p < ema_20 and p < ema_50 and 35 < rsi < 55:
+            type_d, sig, emo = "SHORT (بيع)", "🔴 خروج/هبوط", "📉"
+            stat = "الفلترة تشير لسلبية حادة. كسر المتوسطات يعني استمرار النزيف."
+            t1, t2, sl = p*0.97, p*0.93, p*1.04
         else:
-            sig, color = "🟡 منطقة تذبذب (مراقبة)", "عرضية ⚖️"
-            t1, t2, sl = p * 1.02, p * 1.05, p * 0.98
+            type_d, sig, emo = "WAIT (تذبذب)", "⚪ منطقة خطر", "⏳"
+            stat = "المؤشرات متضاربة. لا تدخل الآن لتجنب الخسارة (نظام حماية الناس)."
+            t1, t2, sl = "---", "---", "---"
 
-        chart = f"https://s3.tradingview.com/snapshots/m/BINANCE:{s}.png"
-        res = (f"📈 **تقرير التحليل الاستراتيجي**\n━━━━━━━━━━━━━━\n"
-               f"🪙 العملة: `{s}` | 💰 السعر: `{p}$` \n"
-               f"📊 الاتجاه: **{sig}**\n"
-               f"🔮 الشمعة القادمة: `{color}`\n"
-               f"🌡️ RSI: `{round(rsi, 1)}` | 🌊 السيولة: `{'🔥 قوية' if vols[-1] > vol_avg else '⚖️ هادئة'}`\n\n"
-               f"🎯 هدف أول: `{round(t1, 5)}` ✅\n"
-               f"🎯 هدف ثاني: `{round(t2, 5)}` 🔥\n"
-               f"🛡️ الوقف: `{round(sl, 5)}` ⛔\n"
-               f"━━━━━━━━━━━━━━\n"
-               f"⏳ مدة الصفقة: `6 - 24 ساعة`\n"
-               f"✅ تحليل سيولة + 4 مؤشرات فنية")
-        return res, chart
-    except:
-        return "⚠️ حدث خطأ أثناء تشريح البيانات الفنية.", None
+        msg = (f"🏛 **رادار القابضة V35 - الفلترة الحديدية**\n━━━━━━━━━━━━━━\n"
+               f"🪙 العملة: #{s} {emo}\n💰 السعر: `{p}`\n📊 الإشارة: **{sig}**\n🌡️ RSI: `{round(rsi, 2)}`\n━━━━━━━━━━━━━━\n"
+               f"📝 التحليل: {stat}\n━━━━━━━━━━━━━━\n"
+               f"🎯 هدف 1: `{t1}`\n🎯 هدف 2: `{t2}`\n🛡️ الوقف: `{sl}`")
+        return msg, chart_url
+    except: return None, None
 
-# --- [ 🕹️ لوحات التحكم ] ---
-def main_menu(uid):
+# --- [ واجهة البوت ] ---
+def main_menu():
     mk = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    mk.row("📊 تحليل رادار V36 📉", "👤 حسابي")
-    mk.row("💳 شحن الاشتراك", "📢 الدعم الفني")
-    if str(uid) == str(OWNER_ID): mk.row("⚙️ إدارة النظام")
+    mk.row("🔍 تحليل عملة (V35)", "👤 حسابي")
+    mk.row("⚡ شحن VIP تلقائي", "👨‍💻 تفعيل يدوي")
     return mk
 
 @bot.message_handler(commands=['start'])
 def start(m):
-    uid = str(m.from_user.id); db = load_db()
-    if uid not in db:
-        db[uid] = {"sub": False, "exp": None, "free": 0, "daily": 0, "last": str(datetime.now().date())}
-        save_db(db)
-    bot.send_message(m.chat.id, "📊 **مرحباً بك في نظام التحليل الفني المطور.**", reply_markup=main_menu(uid))
+    uid = m.from_user.id
+    users_col.update_one({"user_id": uid}, {"$set": {"username": m.from_user.username}}, upsert=True)
+    bot.send_message(m.chat.id, "🐲 **مرحباً بك في رادار القابضة V35**\nنظام الفلترة الحديدية المربوعة لمنع الخسائر والشحن التلقائي.", reply_markup=main_menu())
 
-@bot.message_handler(func=lambda m: m.text == "📊 تحليل رادار V36 📉")
-def request_analysis(m):
+@bot.message_handler(func=lambda m: m.text == "🔍 تحليل عملة (V35)")
+def ana_init(m):
+    uid = m.from_user.id
+    user = users_col.find_one({"user_id": uid})
+    
+    # فحص الـ VIP
+    expiry = user.get('vip_expiry', 0) if user else 0
+    if time.time() > expiry:
+        bot.send_message(m.chat.id, "❌ **اشتراكك VIP منتهي.**\nاستخدم 'شحن VIP تلقائي' للوصول للمحلل المطور.")
+        return
+
     msg = bot.send_message(m.chat.id, "🎯 أرسل رمز العملة (مثال: BTC):")
-    bot.register_next_step_handler(msg, process_analysis)
+    bot.register_next_step_handler(msg, ana_execute)
 
-def process_analysis(m):
-    uid = str(m.from_user.id); db = load_db(); u = db[uid]
-    if not u['sub'] and u['free'] >= 5:
-        return bot.send_message(m.chat.id, "❌ انتهت الحدود المجانية. يرجى الاشتراك.")
-    
-    bot.send_message(m.chat.id, "🔍 **جاري فحص السوق وتشريح السيولة...**")
-    res, chart = get_v36_analysis(m.text)
-    
-    if chart:
-        if not u['sub']: db[uid]['free'] += 1
-        else: db[uid]['daily'] += 1
-        save_db(db)
-        try: bot.send_photo(m.chat.id, chart, caption=res)
-        except: bot.send_message(m.chat.id, res)
-    else: bot.send_message(m.chat.id, res)
+def ana_execute(m):
+    if m.text in ["🔍 تحليل عملة (V35)", "👤 حسابي", "⚡ شحن VIP تلقائي"]: return
+    bot.send_message(m.chat.id, "🔍 جاري الفحص بـ 4 مؤشرات تقنية...")
+    res, chart = get_v35_analysis(m.text)
+    if res:
+        try: bot.send_photo(m.chat.id, chart, caption=res, parse_mode="Markdown")
+        except: bot.send_message(m.chat.id, res, parse_mode="Markdown")
+    else: bot.send_message(m.chat.id, "⚠️ الرمز غير صحيح أو السيرفر مشغول.")
 
 @bot.message_handler(func=lambda m: m.text == "👤 حسابي")
-def account(m):
-    u = load_db().get(str(m.from_user.id), {})
-    status = "VIP" if u.get('sub') else "مجاني"
-    bot.send_message(m.chat.id, f"👤 **حسابك:** {status}\n🆔: `{m.from_user.id}`")
+def my_acc(m):
+    user = users_col.find_one({"user_id": m.from_user.id})
+    expiry = user.get('vip_expiry', 0) if user else 0
+    status = "VIP نشط ✅" if expiry > time.time() else "مجاني 👤"
+    bot.send_message(m.chat.id, f"👤 **معلوماتك:**\n🆔 آيدي: `{m.from_user.id}`\n🌟 الحالة: {status}")
 
-@app.route('/')
-def home(): return "RUNNING"
+# --- [ نظام الشحن التلقائي OxaPay ] ---
+@bot.message_handler(func=lambda m: m.text == "⚡ شحن VIP تلقائي")
+def pay_auto(m):
+    bot.send_message(m.chat.id, f"💳 **اشتراك VIP (30 يوم)**\nالسعر: {VIP_PRICE}$\nالدفع فوري والتفعيل تلقائي.")
+    try:
+        payload = {
+            'merchant': OXAPAY_KEY,
+            'amount': VIP_PRICE,
+            'currency': 'USD',
+            'description': str(m.chat.id),
+            'callbackUrl': "https://your-domain.com/webhook/oxapay" # استبدل برابط سيرفرك
+        }
+        res = requests.post("https://api.oxapay.com/merchants/request", json=payload).json()
+        if res.get('payLink'):
+            mk = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("💳 اضغط هنا للدفع والشحن", url=res['payLink']))
+            bot.send_message(m.chat.id, "انقر على الزر أدناه لإتمام الدفع:", reply_markup=mk)
+    except: bot.send_message(m.chat.id, "⚠️ فشل الاتصال ببوابة الدفع.")
+
+# --- [ التفعيل اليدوي القديم ] ---
+@bot.message_handler(func=lambda m: m.text == "👨‍💻 تفعيل يدوي")
+def manual_p(m):
+    bot.send_message(m.chat.id, "أرسل صورة الإيصال ليتم فحصها من الإدارة.")
+
+@bot.message_handler(content_types=['photo'])
+def handle_receipt(m):
+    bot.forward_message(OWNER_ID, m.chat.id, m.message_id)
+    bot.send_message(OWNER_ID, f"🔔 إيصال من: `{m.from_user.id}`")
+    bot.send_message(m.chat.id, "⏳ تم الاستلام، انتظر التفعيل.")
 
 if __name__ == "__main__":
-    threading.Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080))), daemon=True).start()
-    bot.remove_webhook()
-    time.sleep(1)
-    bot.infinity_polling(skip_pending=True)
+    bot.infinity_polling()
