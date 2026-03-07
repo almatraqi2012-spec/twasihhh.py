@@ -96,7 +96,7 @@ def get_advanced_analysis(symbol):
         return text, chart
     except Exception as e:
         return f"⚠️ خطأ في جلب بيانات `{symbol}`. تأكد من الرمز الصحيح.", None
-# --- [ 🕹️ لوحات التحكم والأزرار ] ---
+# --- [ 🕹️ لوحات التحكم والأزرار ] --
 def main_menu(uid):
     mk = types.ReplyKeyboardMarkup(resize_keyboard=True)
     mk.row("📊 تحليل رادار V36 📉", "👤 حسابي")
