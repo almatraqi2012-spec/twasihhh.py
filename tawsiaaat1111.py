@@ -6,7 +6,7 @@ from flask import Flask
 app = Flask(__name__)
 
 # ================= [ ⚙️ الإعدادات الكبرى ] =================
-API_TOKEN = '8461494562:AAEiYC05gZysQqJPyONhs3Kdw5vhy54TyGk'
+API_TOKEN = '8461494562:AAEgsbKEI93_C3TNb8B9i9D99arx7QwPg9M'
 OWNER_ID = 6016547718 
 OXAPAY_KEY = "CE8H0F-ISXBD2-RXHALY-KZXUZU" 
 WALLET_ADDRESS = "TLtLuhkU2kkkR1Wz1TtrBTpoNRTNviYpsA"
