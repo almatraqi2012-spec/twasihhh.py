@@ -24,54 +24,49 @@ def load_db():
 def save_db(db):
     with open(DB_FILE, 'w') as f: json.dump(db, f, indent=4)
 
-# --- [ 🛡️ المحرك المصحح برمجياً - التشريح الدقيق ] ---
+# --- [ 🛡️ محرك التحليل الاحترافي - فريم 4 ساعات ] ---
 def get_v36_analysis(symbol):
-    # تنظيف الرمز البرمجي
     s = symbol.upper().strip().replace("/", "").replace("-", "")
     if not s.endswith("USDT") and len(s) < 6: s += "USDT"
     
     try:
-        # جلب البيانات من Binance (نظام الـ 4 ساعات للاستراتيجية)
+        # جلب البيانات الرسمية من منصة التداول
         url = f"https://api.binance.com/api/v3/klines?symbol={s}&interval=4h&limit=100"
-        r = requests.get(url, timeout=10)
+        r = requests.get(url, timeout=12)
         
         if r.status_code != 200:
-            return f"❌ خطأ في الاتصال بالمنصة للعملة `{s}`. تأكد من الرمز.", None
+            return f"⚠️ تعذر العثور على بيانات `{s}`. تأكد من الرمز الصحيح.", None
             
         data = r.json()
         
-        # --- [ تشريح البيانات برمجياً ] ---
-        # 1. إغلاق الشمعات (المؤشر الأساسي)
+        # استخراج مصفوفات البيانات بدقة
         closes = [float(candle[4]) for candle in data]
-        # 2. أعلى سعر (لحساب الأهداف)
         highs = [float(candle[2]) for candle in data]
-        # 3. أدنى سعر (لحساب الوقف)
         lows = [float(candle[3]) for candle in data]
-        # 4. حجم التداول (مؤشر السيولة)
         vols = [float(candle[5]) for candle in data]
         
-        p = closes[-1] # السعر الحالي
+        p = closes[-1] # السعر المباشر
         
-        # --- [ حساب المؤشرات الـ 4 والسيولة ] ---
-        # المؤشر 1: المتوسط السريع (EMA 10)
-        ema10 = sum(closes[-10:]) / 10
-        # المؤشر 2: المتوسط البطيء (EMA 30)
-        ema30 = sum(closes[-30:]) / 30
-        # المؤشر 3: القوة النسبية (RSI مبسط)
+        # حساب المؤشرات الفنية الـ 4
+        ema10 = sum(closes[-10:]) / 10 # المتوسط السريع
+        ema30 = sum(closes[-30:]) / 30 # المتوسط البطيء
+        
+        # حساب RSI (القوة النسبية)
         avg_gain = sum([max(0, closes[i] - closes[i-1]) for i in range(-14, 0)]) / 14
         avg_loss = sum([max(0, closes[i-1] - closes[i]) for i in range(-14, 0)]) / 14
         rs = avg_gain / avg_loss if avg_loss != 0 else 1
         rsi = 100 - (100 / (1 + rs))
-        # المؤشر 4: متوسط السيولة (Volume Avg)
+        
+        # حساب متوسط السيولة
         vol_avg = sum(vols[-20:]) / 20
         
-        # حساب المدى السعري (Volatility Range) لأهداف استراتيجية
+        # حساب مدى التذبذب (ATR) لتحديد الأهداف
         volatility = max(highs[-15:]) - min(lows[-15:])
         if volatility == 0: volatility = p * 0.05
 
-        # --- [ منطق التوصية الاستراتيجي ] ---
+        # تحليل الاتجاه واتخاذ القرار
         if p > ema10 and rsi < 70 and vols[-1] > vol_avg:
-            sig, color = "🟢 إشارة دخول (ترند صاعد)", "خضراء"
+            sig, color = "🟢 إشارة دخول (ترند صاعد)", "صاعدة"
             t1, t2, sl = p + (volatility * 0.4), p + (volatility * 0.8), p - (volatility * 0.5)
         elif p < ema10 or rsi > 70:
             sig, color = "🔴 إشارة هبوط (تصحيح/بيع)", "حمراء"
@@ -82,48 +77,51 @@ def get_v36_analysis(symbol):
 
         chart = f"https://s3.tradingview.com/snapshots/m/BINANCE:{s}.png"
         
-        res = (f"🐲 **رادار V36 الاستراتيجي المطور**\n"
+        res = (f"📈 **تقرير التحليل الفني الاستراتيجي**\n"
                f"━━━━━━━━━━━━━━\n"
                f"🪙 العملة: `{s}` | 💰 السعر: `{p}$` \n"
-               f"📈 الإشارة: **{sig}**\n"
-               f"🔮 التوقع: `الشمعة القادمة {color} بإذن الله`\n"
-               f"🌡️ RSI: `{round(rsi, 1)}` | 🌊 السيولة: `{'🔥 عالية' if vols[-1] > vol_avg else '⚖️ متوسطة'}`\n\n"
+               f"📊 الاتجاه الحالي: **{sig}**\n"
+               f"🔮 حركة الشمعة القادمة: `{color}`\n"
+               f"🌡️ RSI: `{round(rsi, 1)}` | 🌊 السيولة: `{'🔥 قوية' if vols[-1] > vol_avg else '⚖️ هادئة'}`\n\n"
                f"🎯 هدف أول: `{round(t1, 5)}` ✅\n"
                f"🎯 هدف ثاني: `{round(t2, 5)}` 🔥\n"
-               f"🛡️ الوقف: `{round(sl, 5)}` ⛔\n"
+               f"🛡️ وقف الخسارة: `{round(sl, 5)}` ⛔\n"
                f"━━━━━━━━━━━━━━\n"
-               f"⏳ مدة الصفقة: `6 - 24 ساعة`\n"
-               f"✅ تم فحص 4 مؤشرات + السيولة الحقيقية")
+               f"⏳ مدة الصفقة المتوقعة: `6 - 24 ساعة`\n"
+               f"✅ تم الفحص بناءً على 4 مؤشرات سيولة واتجاه")
         return res, chart
 
-    except Exception as e:
-        return f"⚠️ خطأ برمي في معالجة `{symbol}`: الرمز غير متوفر أو التنسيق خاطئ.", None
+    except Exception:
+        return f"⚠️ فشل تحليل `{symbol}`. قد يكون الرمز غير مدعوم حالياً.", None
 
-# --- [ 🕹️ إدارة الأوامر ] ---
+# --- [ 🕹️ لوحات التحكم ] ---
+def main_menu(uid):
+    mk = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    mk.row("📊 تحليل رادار V36 📉", "👤 حسابي")
+    mk.row("💳 شحن الاشتراك", "📢 الدعم الفني")
+    if str(uid) == str(OWNER_ID): mk.row("⚙️ إدارة النظام")
+    return mk
+
 @bot.message_handler(commands=['start'])
 def start(m):
     uid = str(m.from_user.id); db = load_db()
     if uid not in db:
         db[uid] = {"sub": False, "exp": None, "free": 0, "daily": 0, "last": str(datetime.now().date())}
         save_db(db)
-    mk = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    mk.row("📊 تحليل رادار V36 📉", "👤 حسابي")
-    mk.row("💳 شحن الاشتراك", "📢 دعم الرادار")
-    if uid == str(OWNER_ID): mk.row("⚙️ لوحة تحكم المالك")
-    bot.send_message(m.chat.id, "🐲 **رادار V36 الاستراتيجي جاهز للعمل!**", reply_markup=mk)
+    bot.send_message(m.chat.id, "📊 **مرحباً بك في نظام تحليل رادار V36 المطور.**\nيرجى اختيار القسم من القائمة أدناه:", reply_markup=main_menu(uid))
 
 @bot.message_handler(func=lambda m: m.text == "📊 تحليل رادار V36 📉")
-def request_coin(m):
+def request_analysis(m):
     msg = bot.send_message(m.chat.id, "🎯 أرسل رمز العملة (مثال: BTC):")
     bot.register_next_step_handler(msg, process_analysis)
 
 def process_analysis(m):
     uid = str(m.from_user.id); db = load_db()
-    # التحقق من القيود
+    # التحقق من القيود المجانية والمدفوعة
     if not db[uid]['sub'] and db[uid]['free'] >= 5:
-        return bot.send_message(m.chat.id, "❌ انتهى حدك المجاني. يرجى الاشتراك.")
+        return bot.send_message(m.chat.id, "❌ انتهت حدود الاستخدام المجاني. يرجى الاشتراك.")
     
-    bot.send_message(m.chat.id, "🔍 **جاري تحليل البيانات وتشريح السيولة...**")
+    bot.send_message(m.chat.id, "🔍 **جاري تحليل السيولة وتشريح حركة السوق...**")
     res, chart = get_v36_analysis(m.text)
     
     if chart:
@@ -136,28 +134,29 @@ def process_analysis(m):
         bot.send_message(m.chat.id, res)
 
 @bot.message_handler(func=lambda m: m.text == "👤 حسابي")
-def account(m):
+def my_account(m):
     u = load_db()[str(m.from_user.id)]
-    status = "VIP" if u['sub'] else "مجاني"
-    bot.send_message(m.chat.id, f"👤 **حسابك:** {status}\n📊 الاستهلاك: {u['daily'] if u['sub'] else u['free']}/5")
+    status = f"✅ VIP (ينتهي: {u['exp']})" if u['sub'] else "👤 مجاني"
+    limit = f"{u['daily']}/5 يومياً" if u['sub'] else f"{u['free']}/5 إجمالي"
+    bot.send_message(m.chat.id, f"👤 **معلومات العضوية:**\n━━━━━━━━━━━━━━\n🆔 المعرف: `{m.from_user.id}`\n🛡️ الرتبة: {status}\n📊 الاستهلاك: {limit}\n━━━━━━━━━━━━━━")
 
-@bot.message_handler(func=lambda m: m.text == "⚙️ لوحة تحكم المالك" and str(m.from_user.id) == str(OWNER_ID))
-def admin(m):
-    msg = bot.send_message(m.chat.id, "أرسل ID المستخدم لتفعيله 30 يوم:")
-    bot.register_next_step_handler(msg, activate)
+@bot.message_handler(func=lambda m: m.text == "⚙️ إدارة النظام" and str(m.from_user.id) == str(OWNER_ID))
+def admin_panel(m):
+    msg = bot.send_message(m.chat.id, "أرسل معرف المستخدم (ID) لتفعيله 30 يوماً:")
+    bot.register_next_step_handler(msg, activate_user)
 
-def activate(m):
+def activate_user(m):
     tid = m.text.strip(); db = load_db()
     if tid in db:
         db[tid]['sub'] = True
         db[tid]['exp'] = (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')
         save_db(db)
-        bot.send_message(m.chat.id, f"✅ تم تفعيل {tid}"); bot.send_message(tid, "🌟 تم تفعيل VIP!")
-    else: bot.send_message(m.chat.id, "❌ غير مسجل.")
+        bot.send_message(m.chat.id, f"✅ تم تفعيل `{tid}`"); bot.send_message(tid, "🌟 تم تفعيل اشتراكك VIP بنجاح!")
+    else: bot.send_message(m.chat.id, "❌ المستخدم غير موجود.")
 
-# --- [ التشغيل ] ---
+# --- [ 🌐 التشغيل ] ---
 @app.route('/')
-def home(): return "ACTIVE"
+def home(): return "SYSTEM ONLINE"
 
 if __name__ == "__main__":
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080))), daemon=True).start()
