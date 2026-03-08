@@ -2,10 +2,10 @@ import requests, telebot, time, json, os, threading
 from telebot import types
 from flask import Flask
 
-# --- [ 1. نظام الحفاظ على البوت حياً (Render/Heroku) ] ---
+# --- [ 1. استقرار السيرفر ] ---
 app = Flask('')
 @app.route('/')
-def home(): return "V36 SYSTEM IS FULLY ACTIVE"
+def home(): return "RADAR HOLDING SYSTEM ACTIVE"
 def run_server():
     try: app.run(host='0.0.0.0', port=8080)
     except: pass
@@ -16,7 +16,7 @@ API_TOKEN = '8461494562:AAEgsbKEI93_C3TNb8B9i9D99arx7QwPg9M'
 OWNER_ID = 6016547718
 OXAPAY_KEY = "CE8H0F-ISXBD2-RXHALY-KZXUZU"
 MY_WALLET = "TLtLuhkU2kkkR1Wz1TtrBTpoNRTNviYpsA"
-DB_FILE = "radar_v36_final.json"
+DB_FILE = "radar_v36_database.json"
 
 bot = telebot.TeleBot(API_TOKEN)
 
@@ -33,93 +33,109 @@ def save_db():
         with open(DB_FILE, 'w') as f: json.dump(db, f)
     except: pass
 
-# --- [ 3. محرك التحليل الخماسي (الاحترافي) ] ---
+# --- [ 3. محرك التحليل الاحترافي (المعايير الخمسة) ] ---
 def get_v36_analysis(symbol):
     s = symbol.upper().strip().replace("/", "").replace("-", "")
     if not s.endswith("USDT") and len(s) < 7: s += "USDT"
     
-    # محاولة جلب البيانات من Binance أو MEXC
-    url = f"https://api.binance.com/api/v3/klines?symbol={s}&interval=1h&limit=100"
-    source = "BINANCE"
+    # فحص المنصات لضمان السيولة
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    urls = [
+        f"https://api.binance.com/api/v3/klines?symbol={s}&interval=1h&limit=100",
+        f"https://api.mexc.com/api/v3/klines?symbol={s}&interval=60m&limit=100"
+    ]
+    
+    data, source_name = None, "BINANCE"
+    for url in urls:
+        try:
+            r = requests.get(url, headers=headers, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                if "mexc" in url: source_name = "MEXC"
+                break
+        except: continue
+
+    if not data or len(data) < 50: return None
+
     try:
-        r = requests.get(url, timeout=10)
-        if r.status_code != 200:
-            url = f"https://api.mexc.com/api/v3/klines?symbol={s}&interval=60m&limit=100"
-            r = requests.get(url, timeout=10)
-            source = "MEXC"
-        
-        data = r.json()
         closes = [float(c[4]) for c in data]
         vols = [float(c[5]) for c in data]
         p = closes[-1]
 
-        # حساب المؤشرات (MACD, RSI, EMA, BB, Volume)
+        # 1. RSI (14)
         up = [max(0, closes[i] - closes[i-1]) for i in range(-14, 0)]
         dn = [max(0, closes[i-1] - closes[i]) for i in range(-14, 0)]
         rsi = 100 - (100 / (1 + (sum(up)/sum(dn) if sum(dn) != 0 else 1)))
+        
+        # 2. EMA (20) & 3. MACD (12, 26)
         ema = sum(closes[-20:]) / 20
         macd = (sum(closes[-12:]) / 12) - (sum(closes[-26:]) / 26)
-        std_dev = (sum([(x - ema)**2 for x in closes[-20:]]) / 20)**0.5
-
-        # منطق الإشارة (صعود / هبوط)
-        if p > ema and macd > 0 and rsi > 52:
-            sig, pred, emo = "🚀 صعود (LONG)", "خضراء صاعدة 📈", "🟢"
-            t1, t2, sl = p + (std_dev * 1.5), p + (std_dev * 2.5), p - (std_dev * 1.8)
-        elif p < ema and macd < 0 and rsi < 48:
-            sig, pred, emo = "📉 هبوط (SHORT)", "حمراء هابطة 📉", "🔴"
-            t1, t2, sl = p - (std_dev * 1.5), p - (std_dev * 2.5), p + (std_dev * 1.8)
-        else:
-            sig, pred, emo = "⚖️ حركة عرضية", "شمعة متذبذبة ⏳", "🟡"
-            t1, t2, sl = p * 1.015, p * 1.03, p * 0.985
-
-        # توليد الشارت كصورة
-        chart_image = f"https://s3.tradingview.com/snapshots/m/{source}:{s}.png"
-
-        res = (f"📊 **تقرير التحليل الفني V36 PRO**\n━━━━━━━━━━━━━━\n"
-               f"🪙 العملة: #{s} {emo}\n💰 السعر: `{p}$` | 🌡️ RSI: `{round(rsi,1)}` \n"
-               f"🌊 السيولة: `{'🔥 قوية' if vols[-1] > (sum(vols[-20:])/20) else '⚖️ هادئة'}`\n━━━━━━━━━━━━━━\n"
-               f"💡 الإشارة: **{sig}**\n🔮 التوقع: **{pred}**\n━━━━━━━━━━━━━━\n"
-               f"🎯 هدف 1: `{round(t1, 5)}` ✅\n🎯 هدف 2: `{round(t2, 5)}` 🔥\n🛡️ الوقف: `{round(sl, 5)}` ⛔\n\n"
-               f"✅ تحليل خماسي: MACD + RSI + EMA + BB + Vol")
         
-        return res, chart_image
-    except: return None, None
+        # 4. Bollinger Bands (StdDev)
+        std_dev = (sum([(x - ema)**2 for x in closes[-20:]]) / 20)**0.5
+        
+        # 5. السيولة (Volume Analysis)
+        avg_vol = sum(vols[-20:]) / 20
+        vol_status = "🔥 قوية" if vols[-1] > avg_vol else "⚖️ هادئة"
 
-# --- [ 4. نظام الشحن والتحكم بالأزرار ] ---
+        # منطق الإشارة (صعود/هبوط/حيرة)
+        if p > ema and macd > 0 and rsi > 52:
+            sig, status_emo, txt = "🚀 دخول شراء (LONG)", "🟢", "السيولة إيجابية والترند صاعد، يتوقع استمرار الزخم."
+            t1, t2, sl = p + (std_dev * 1.6), p + (std_dev * 2.8), p - (std_dev * 2.0)
+        elif p < ema and macd < 0 and rsi < 48:
+            sig, status_emo, txt = "📉 دخول بيع (SHORT)", "🔴", "ضغط بيعي واضح مع كسر متوسطات الحركة السعرية."
+            t1, t2, sl = p - (std_dev * 1.6), p - (std_dev * 2.8), p + (std_dev * 2.0)
+        else:
+            sig, status_emo, txt = "⏳ منطقة حيرة", "⚪", "السيولة متذبذبة حالياً. ننتظر اختراق القمة أو القاع."
+            t1, t2, sl = p * 1.018, p * 1.035, p * 0.982
+
+        chart_link = f"https://www.tradingview.com/chart/?symbol={source_name}:{s}"
+
+        return (f"🏛 **رادار القابضة - التقرير الفني**\n━━━━━━━━━━━━━━\n"
+                f"🪙 العملة: #{s} {status_emo}\n"
+                f"💰 السعر: `{p}` | 📊 RSI: `{round(rsi,1)}` \n"
+                f"🌐 المصدر: {source_name} | 🛡️ الحالة: واقعية\n━━━━━━━━━━━━━━\n"
+                f"💡 الإشارة: **{sig}**\n"
+                f"📌 التحليل: {txt}\n━━━━━━━━━━━━━━\n"
+                f"🎯 هدف 1: `{round(t1, 5)}` \n"
+                f"🎯 هدف 2: `{round(t2, 5)}` \n"
+                f"🛡️ الوقف: `{round(sl, 5)}` \n\n"
+                f"🔗 [عرض الشارت المباشر]({chart_link})")
+    except: return None
+
+# --- [ 4. نظام الشحن والتحكم ] ---
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
     uid = call.message.chat.id
     if call.data == "pay_auto":
-        msg = bot.send_message(uid, "💰 أدخل المبلغ الذي تريد شحنه ($):")
+        msg = bot.send_message(uid, "💰 أدخل مبلغ الشحن المطلوب ($):")
         bot.register_next_step_handler(msg, create_invoice)
     elif call.data == "pay_manual":
-        bot.send_message(uid, f"📌 حول المبلغ لعنوان المحفظة:\n`{MY_WALLET}`\n\nثم أرسل صورة الإيصال هنا.")
+        bot.send_message(uid, f"📌 حول لعنوان المحفظة:\n`{MY_WALLET}`\n\nثم أرسل الإيصال هنا.")
         bot.register_next_step_handler(call.message, wait_for_receipt)
     elif call.data.startswith("adm_confirm_"):
         tid = call.data.split("_")[2]
-        db["vip"][str(tid)] = time.time() + (30 * 86400)
-        save_db()
-        bot.send_message(int(tid), "✅ تم تفعيل اشتراكك في VIP لمدة شهر!")
-        bot.answer_callback_query(call.id, "تم التفعيل بنجاح")
+        db["vip"][str(tid)] = time.time() + (30 * 86400); save_db()
+        bot.send_message(int(tid), "✅ تم تفعيل اشتراك VIP بنجاح! استمتع بتحليلات غير محدودة.")
+        bot.answer_callback_query(call.id, "تم التفعيل")
 
 def create_invoice(m):
     try:
         amt = float(m.text)
         res = requests.post("https://api.oxapay.com/merchants/request", json={'merchant': OXAPAY_KEY, 'amount': amt, 'currency': 'USD'}).json()
         if res.get('payLink'):
-            mk = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("💳 اضغط هنا للدفع", url=res['payLink']))
-            bot.send_message(m.chat.id, f"📝 فاتورة شحن بقيمة {amt}$ جاهزة:", reply_markup=mk)
-        else: bot.send_message(m.chat.id, "⚠️ عذراً، تعذر إنشاء الفاتورة حالياً.")
-    except: bot.send_message(m.chat.id, "⚠️ يرجى إدخال مبلغ صحيح.")
+            mk = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("💳 دفع آلي الآن", url=res['payLink']))
+            bot.send_message(m.chat.id, f"📝 فاتورة بقيمة {amt}$ جاهزة:", reply_markup=mk)
+    except: bot.send_message(m.chat.id, "⚠️ أدخل رقماً صحيحاً.")
 
 def wait_for_receipt(m):
     if m.photo:
-        mk = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("✅ تفعيل الحساب", callback_data=f"adm_confirm_50_{m.chat.id}"))
-        bot.send_photo(OWNER_ID, m.photo[-1].file_id, caption=f"🔔 طلب تفعيل يدوي من: `{m.chat.id}`", reply_markup=mk)
-        bot.send_message(m.chat.id, "✅ تم إرسال الإيصال للمدير، سيتم التفعيل قريباً.")
-    else: bot.send_message(m.chat.id, "⚠️ يرجى إرسال صورة الإيصال.")
+        mk = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("✅ تفعيل العميل", callback_data=f"adm_confirm_50_{m.chat.id}"))
+        bot.send_photo(OWNER_ID, m.photo[-1].file_id, caption=f"🔔 إيصال جديد من: `{m.chat.id}`", reply_markup=mk)
+        bot.send_message(m.chat.id, "✅ تم استلام الإيصال، جاري المراجعة...")
+    else: bot.send_message(m.chat.id, "⚠️ يرجى إرسال صورة.")
 
-# --- [ 5. القوائم الرئيسية والأوامر ] ---
+# --- [ 5. القوائم الرئيسية ] ---
 @bot.message_handler(commands=['start'])
 def start(m):
     uid = str(m.from_user.id)
@@ -127,51 +143,44 @@ def start(m):
     mk = types.ReplyKeyboardMarkup(resize_keyboard=True)
     mk.row("🔍 تحليل عملة 📈", "👤 حسابي")
     mk.row("💰 شحن الرصيد")
-    bot.send_message(m.chat.id, "📊 **مرحباً بك في رادار V36 الاحترافي**\nالبوت مجهز بأحدث مؤشرات التحليل الفني.", reply_markup=mk)
+    bot.send_message(m.chat.id, "🏛 **مرحباً بك في رادار القابضة المتطور**", reply_markup=mk)
 
 @bot.message_handler(func=lambda m: m.text == "💰 شحن الرصيد")
 def dep_menu(m):
     mk = types.InlineKeyboardMarkup()
     mk.add(types.InlineKeyboardButton("⚡ شحن آلي (Oxapay)", callback_data="pay_auto"))
-    mk.add(types.InlineKeyboardButton("💳 شحن يدوي (إرسال إيصال)", callback_data="pay_manual"))
-    bot.send_message(m.chat.id, "اختر وسيلة الشحن المناسبة لك:", reply_markup=mk)
+    mk.add(types.InlineKeyboardButton("💳 شحن يدوي (إيصال)", callback_data="pay_manual"))
+    bot.send_message(m.chat.id, "اختر وسيلة الشحن:", reply_markup=mk)
 
 @bot.message_handler(func=lambda m: m.text == "🔍 تحليل عملة 📈")
 def ana_init(m):
     uid = str(m.from_user.id)
     is_vip = db["vip"].get(uid, 0) > time.time()
     if not is_vip and db["free_usage"].get(uid, 0) >= 5:
-        return bot.send_message(m.chat.id, "❌ انتهت محاولاتك المجانية (5/5).\nيرجى شحن حسابك للاستمرار.")
-    msg = bot.send_message(m.chat.id, "🎯 أرسل رمز العملة (مثال: BTC أو XRP):")
+        return bot.send_message(m.chat.id, "❌ انتهت محاولاتك المجانية (5/5). يرجى الشحن للتحويل لـ VIP.")
+    msg = bot.send_message(m.chat.id, "🎯 أرسل رمز العملة (مثال: BTC):")
     bot.register_next_step_handler(msg, ana_execute)
 
 def ana_execute(m):
     if m.text in ["🔍 تحليل عملة 📈", "👤 حسابي", "💰 شحن الرصيد"]: return
-    bot.send_message(m.chat.id, "⏳ جاري تشريح البيانات وجلب الشارت...")
-    res, chart_url = get_v36_analysis(m.text)
-    
-    if res and chart_url:
+    bot.send_message(m.chat.id, "⏳ جاري استخراج البيانات وتحليل السيولة...")
+    res = get_v36_analysis(m.text)
+    if res:
         uid = str(m.from_user.id)
         if not db["vip"].get(uid, 0) > time.time():
             db["free_usage"][uid] = db["free_usage"].get(uid, 0) + 1; save_db()
-        
-        try:
-            bot.send_photo(m.chat.id, chart_url, caption=res, parse_mode="Markdown")
-        except:
-            bot.send_message(m.chat.id, res, parse_mode="Markdown")
+        bot.send_message(m.chat.id, res, parse_mode="Markdown", disable_web_page_preview=False)
     else:
-        bot.send_message(m.chat.id, "⚠️ تعذر العثور على العملة، تأكد من كتابة الرمز بشكل صحيح.")
+        bot.send_message(m.chat.id, "⚠️ العملة غير مدعومة أو الرمز خطأ. حاول مجدداً.")
 
 @bot.message_handler(func=lambda m: m.text == "👤 حسابي")
 def my_acc(m):
     uid = str(m.from_user.id)
     is_vip = db["vip"].get(uid, 0) > time.time()
-    st = "VIP ✅" if is_vip else f"مجاني ({db['free_usage'].get(uid, 0)}/5)"
-    bot.send_message(m.chat.id, f"👤 **معلومات حسابك:**\n━━━━━━━━━━━━━━\n🆔 معرفك: `{uid}`\n🌟 الحالة: {st}")
+    st = "VIP 👑" if is_vip else f"مجاني ({db['free_usage'].get(uid, 0)}/5)"
+    bot.send_message(m.chat.id, f"👤 **تفاصيل الحساب:**\n━━━━━━━━━━━━━━\n🆔 الآيدي: `{uid}`\n🌟 الحالة: {st}")
 
-# --- [ 6. التشغيل النهائي ] ---
 if __name__ == "__main__":
     bot.remove_webhook()
     time.sleep(1)
-    print("V36 BOT IS RUNNING...")
     bot.infinity_polling(skip_pending=True)
