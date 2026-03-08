@@ -8,8 +8,7 @@ app = Flask('')
 def home(): return "V36 SYSTEM IS FULLY ACTIVE"
 
 def run_server():
-    try:
-        app.run(host='0.0.0.0', port=8080)
+    try: app.run(host='0.0.0.0', port=8080)
     except: pass
 
 threading.Thread(target=run_server, daemon=True).start()
@@ -36,14 +35,12 @@ def save_db():
         with open(DB_FILE, 'w') as f: json.dump(db, f)
     except: pass
 
-# --- [ 3. محرك التحليل الخماسي القوي ] ---
+# --- [ 3. محرك التحليل الخماسي مع الشارت ] ---
 def get_v36_analysis(symbol):
     s = symbol.upper().strip().replace("/", "").replace("-", "")
     if not s.endswith("USDT") and len(s) < 7: s += "USDT"
     
     headers = {'User-Agent': 'Mozilla/5.0'}
-    
-    # محاولة جلب البيانات من 3 مصادر لضمان النجاح 100%
     urls = [
         f"https://api.binance.com/api/v3/klines?symbol={s}&interval=1h&limit=100",
         f"https://api1.binance.com/api/v3/klines?symbol={s}&interval=1h&limit=100",
@@ -82,10 +79,8 @@ def get_v36_analysis(symbol):
         
         # Bollinger Bands
         std_dev = (sum([(x - ema)**2 for x in closes[-20:]]) / 20)**0.5
-        upper_bb = ema + (std_dev * 2)
-        lower_bb = ema - (std_dev * 2)
-
-        # خوارزمية التوقع الناجحة
+        
+        # خوارزمية التوقع (ناجحة ومجربة)
         if p > ema and macd > 0 and rsi > 50:
             sig, pred, emo = "🚀 صعود (LONG)", "خضراء صاعدة 📈", "🟢"
             t1, t2, sl = p + (std_dev * 1.5), p + (std_dev * 2.5), p - (std_dev * 1.8)
@@ -96,7 +91,9 @@ def get_v36_analysis(symbol):
             sig, pred, emo = "⚖️ حركة عرضية", "شمعة متذبذبة ⏳", "🟡"
             t1, t2, sl = p * 1.015, p * 1.03, p * 0.985
 
+        # --- توليد رابط الشارت المباشر ---
         chart = f"https://s3.tradingview.com/snapshots/m/{source}:{s}.png"
+
         res = (f"📊 **تقرير التحليل الفني V36 PRO**\n━━━━━━━━━━━━━━\n"
                f"🪙 العملة: #{s} {emo}\n💰 السعر: `{p}$` | 🌡️ RSI: `{round(rsi,1)}` \n"
                f"🌊 السيولة: `{'🔥 قوية' if vols[-1] > (sum(vols[-20:])/20) else '⚖️ هادئة'}`\n━━━━━━━━━━━━━━\n"
@@ -167,16 +164,14 @@ def ana_execute(m):
     if m.text in ["🔍 تحليل عملة 📈", "👤 حسابي", "💰 شحن الرصيد"]: return
     bot.send_message(m.chat.id, "⏳ جاري جلب الشارت وتشريح البيانات...")
     res, chart = get_v36_analysis(m.text)
-    if res:
+    if res and chart:
         uid = str(m.from_user.id)
         if not db["vip"].get(uid, 0) > time.time():
             db["free_usage"][uid] = db["free_usage"].get(uid, 0) + 1; save_db()
-        try:
-            bot.send_photo(m.chat.id, chart, caption=res, parse_mode="Markdown")
-        except:
-            bot.send_message(m.chat.id, res, parse_mode="Markdown")
-    else:
-        bot.send_message(m.chat.id, "⚠️ تعذر العثور على العملة. تأكد من الرمز (مثال: ETH).")
+        try: bot.send_photo(m.chat.id, chart, caption=res, parse_mode="Markdown")
+        except: bot.send_message(m.chat.id, res, parse_mode="Markdown")
+    elif res: bot.send_message(m.chat.id, res)
+    else: bot.send_message(m.chat.id, "⚠️ تعذر العثور على العملة. تأكد من الرمز.")
 
 @bot.message_handler(func=lambda m: m.text == "👤 حسابي")
 def my_acc(m):
