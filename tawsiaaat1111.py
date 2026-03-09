@@ -103,23 +103,32 @@ def get_v36_analysis(symbol):
 # --- [ 4. نظام الشحن والتفعيل ] ---
 @bot.callback_query_handler(func=lambda call: True)
 def handle_query(call):
-    uid = call.message.chat.id
-    if call.data == "pay_auto":
-        # فرض الـ 50 دولار تلقائياً
-        create_invoice(call.message, 50)
+    uid = str(call.message.chat.id)
     
-    elif call.data == "pay_manual":
-        bot.send_message(uid, f"📌 حول 50$ لعنوان المحفظة:\n`{MY_WALLET}`\n\nثم أرسل الإيصال.")
+    if call.data == "pay_manual":
+        bot.send_message(uid, f"📌 حول لعنوان المحفظة:\n`{MY_WALLET}`\n\nثم أرسل الإيصال هنا.")
         bot.register_next_step_handler(call.message, wait_for_receipt)
     
     elif call.data.startswith("adm_confirm_"):
+        # استخراج آيدي العميل من بيانات الزر
         target_id = call.data.split("_")[2]
+        
+        # التفعيل في قاعدة البيانات وحفظها فوراً
         db["vip"][str(target_id)] = time.time() + (30 * 86400)
         save_db()
-        bot.answer_callback_query(call.id, "✅ تم التفعيل!", show_alert=True)
-        bot.send_message(int(target_id), "✅ تم تفعيل حساب VIP الخاص بك بنجاح من قبل الإدارة.")
-        bot.edit_message_caption(chat_id=OWNER_ID, message_id=call.message.message_id, caption="✅ تمت العملية.")
-
+        
+        # إشعار للمالك (أنت)
+        bot.answer_callback_query(call.id, "✅ تم تفعيل العميل بنجاح!", show_alert=True)
+        
+        # إشعار للعميل المشترك
+        try:
+            bot.send_message(int(target_id), "✅ **تهانينا! تم تفعيل اشتراك VIP الخاص بك بنجاح.**\n\nيمكنك الآن استخدام ميزة التحليل بلا حدود.")
+        except:
+            pass
+            
+        # تحديث الرسالة عند المالك
+        bot.edit_message_caption(chat_id=OWNER_ID, message_id=call.message.message_id, 
+                                 caption=f"✅ تم تفعيل العميل: {target_id}\nالحالة: VIP 👑")
 def create_invoice(m, amt):
     try:
         # إنشاء فاتورة بـ 50 دولار ثابتة مع وضع آيدي العميل في الوصف للتفعيل الآلي
