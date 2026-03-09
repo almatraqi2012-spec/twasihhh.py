@@ -2,21 +2,22 @@ import requests, telebot, time, json, os, threading
 from telebot import types
 from flask import Flask, request
 
-# --- [ 1. سيرفر الاستقبال للتفعيل التلقائي ] ---
+# --- [ 1. سيرفر الاستقبال والويب هوك ] ---
 app = Flask('')
 
 @app.route('/')
-def home(): return "RADAR SYSTEM ONLINE"
+def home(): return "RADAR SYSTEM IS FULLY ACTIVE"
 
 @app.route('/payment/webhook', methods=['POST'])
 def webhook():
     data = request.json
+    # التفعيل الآلي عند استلام تأكيد من بوابة الدفع
     if data and data.get('status') == 'confirmed':
         target_id = data.get('description') 
         if target_id:
             db["vip"][str(target_id)] = time.time() + (30 * 86400)
             save_db()
-            try: bot.send_message(int(target_id), "✅ تم دفع الاشتراك بنجاح! تم تفعيل حساب VIP الخاص بك آلياً لمدة 30 يوم.")
+            try: bot.send_message(int(target_id), "✅ **تم تفعيل اشتراك VIP آلياً بنجاح!**\nاستمتع بالتحليلات غير المحدودة.")
             except: pass
     return "OK", 200
 
@@ -25,7 +26,7 @@ def run_server():
     except: pass
 threading.Thread(target=run_server, daemon=True).start()
 
-# --- [ 2. الإعدادات ] ---
+# --- [ 2. الإعدادات والبيانات ] ---
 API_TOKEN = '8461494562:AAEgsbKEI93_C3TNb8B9i9D99arx7QwPg9M'
 OWNER_ID = 6016547718
 OXAPAY_KEY = "CE8H0F-ISXBD2-RXHALY-KZXUZU"
@@ -47,7 +48,7 @@ def save_db():
         with open(DB_FILE, 'w') as f: json.dump(db, f)
     except: pass
 
-# --- [ 3. محرك التحليل ] ---
+# --- [ 3. محرك التحليل الخماسي ] ---
 def get_v36_analysis(symbol):
     s = symbol.upper().strip().replace("/", "").replace("-", "")
     if not s.endswith("USDT") and len(s) < 7: s += "USDT"
@@ -100,29 +101,37 @@ def get_v36_analysis(symbol):
                 f"🔗 [عرض الشارت المباشر]({chart_link})")
     except: return None
 
-# --- [ 4. نظام الشحن والتفعيل ] ---
+# --- [ 4. نظام الشحن ومعالجة الأزرار ] ---
 @bot.callback_query_handler(func=lambda call: True)
 def handle_query(call):
     uid = call.message.chat.id
+    
     if call.data == "pay_auto":
         create_invoice(call.message, 50)
     
     elif call.data == "pay_manual":
-        bot.send_message(uid, f"📌 حول 50$ لعنوان المحفظة:\n`{MY_WALLET}`\n\nثم أرسل صورة الإيصال.")
+        bot.send_message(uid, f"📌 حول 50$ لعنوان المحفظة:\n`{MY_WALLET}`\n\nثم أرسل صورة الإيصال هنا.")
         bot.register_next_step_handler(call.message, wait_for_receipt)
     
-    elif call.data.startswith("adm_confirm_"):
-        # تم الإصلاح هنا: نأخذ الجزء الأخير وهو الآيدي دائماً
-        target_id = call.data.split("_")[-1] 
+    elif call.data.startswith("confirm_"):
+        # إصلاح جذري لاستخراج الآيدي: نأخذ آخر عنصر بعد الفاصلة
+        target_id = str(call.data.split("_")[-1])
         
-        db["vip"][str(target_id)] = time.time() + (30 * 86400)
+        # التفعيل في قاعدة البيانات
+        db["vip"][target_id] = time.time() + (30 * 86400)
         save_db()
         
-        bot.answer_callback_query(call.id, "✅ تم تفعيل العميل بنجاح!", show_alert=True)
-        try: bot.send_message(int(target_id), "✅ تم تفعيل حساب VIP الخاص بك بنجاح من قبل الإدارة.")
+        # رد فعل فوري للمالك
+        bot.answer_callback_query(call.id, "✅ تم التفعيل بنجاح!", show_alert=True)
+        
+        # محاولة إبلاغ العميل
+        try:
+            bot.send_message(int(target_id), "✅ **تهانينا! تمت مراجعة إيصالك وتفعيل حسابك VIP لمدة 30 يوم بنجاح.**")
         except: pass
+        
+        # تحديث رسالة الإيصال عند المالك
         bot.edit_message_caption(chat_id=OWNER_ID, message_id=call.message.message_id, 
-                                 caption=f"✅ تم تفعيل العميل: `{target_id}` بنجاح.")
+                                 caption=f"✅ تم التفعيل للعميل: `{target_id}`\nالحالة الآن: VIP 👑")
 
 def create_invoice(m, amt):
     try:
@@ -130,24 +139,26 @@ def create_invoice(m, amt):
             'merchant': OXAPAY_KEY,
             'amount': amt,
             'currency': 'USD',
-            'description': str(m.chat.id),
-            'callbackUrl': 'https://your-app-name.replit.app/payment/webhook' 
+            'description': str(m.chat.id) # نضع الآيدي هنا ليتم استخدامه في التفعيل الآلي
         }
         res = requests.post("https://api.oxapay.com/merchants/request", json=payload).json()
         if res.get('payLink'):
-            mk = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("💳 ادفع 50$ وتفعل آلياً", url=res['payLink']))
-            bot.send_message(m.chat.id, "🏛 **فاتورة اشتراك رادار القابضة (30 يوم)**\nالمبلغ: 50 USDT", reply_markup=mk)
-    except: bot.send_message(m.chat.id, "⚠️ عطل في بوابة الدفع.")
+            mk = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("💳 ادفع 50$ (تفعيل آلي)", url=res['payLink']))
+            bot.send_message(m.chat.id, "🏛 **فاتورة اشتراك VIP**\nالمبلغ: 50 USDT\nالمدة: 30 يوم", reply_markup=mk)
+    except: bot.send_message(m.chat.id, "⚠️ عطل مؤقت في بوابة الدفع.")
 
 def wait_for_receipt(m):
     if m.photo:
-        # هنا جعلنا الآيدي في نهاية الـ callback_data لضمان قراءته صح
-        mk = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("✅ تفعيل العميل", callback_data=f"adm_confirm_vip_{m.chat.id}"))
-        bot.send_photo(OWNER_ID, m.photo[-1].file_id, caption=f"🔔 إيصال جديد من: `{m.chat.id}`", reply_markup=mk)
-        bot.send_message(m.chat.id, "✅ استلمنا الإيصال، انتظر التفعيل من الإدارة.")
-    else: bot.send_message(m.chat.id, "⚠️ يرجى إرسال صورة الإيصال.")
+        # هنا يتم تمرير الآيدي بشكل صريح في الزر
+        mk = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("✅ تفعيل الحساب الآن", callback_data=f"confirm_user_{m.chat.id}"))
+        bot.send_photo(OWNER_ID, m.photo[-1].file_id, 
+                       caption=f"🔔 إيصال جديد من: `{m.chat.id}`\nاضغط على الزر أدناه للتفعيل فوراً:", 
+                       reply_markup=mk)
+        bot.send_message(m.chat.id, "✅ استلمنا الإيصال، سيتم تفعيل حسابك فور مراجعة المدير.")
+    else:
+        bot.send_message(m.chat.id, "⚠️ يرجى إرسال صورة الإيصال فقط.")
 
-# --- [ 5. القوائم ] ---
+# --- [ 5. القوائم الرئيسية ] ---
 @bot.message_handler(commands=['start'])
 def start(m):
     uid = str(m.from_user.id)
@@ -155,13 +166,14 @@ def start(m):
     mk = types.ReplyKeyboardMarkup(resize_keyboard=True)
     mk.row("🔍 تحليل عملة 📈", "👤 حسابي")
     mk.row("💰 شحن الرصيد")
-    bot.send_message(m.chat.id, "🏛 **رادار القابضة V36**", reply_markup=mk)
+    bot.send_message(m.chat.id, "🏛 **رادار القابضة V36 PRO**", reply_markup=mk)
 
 @bot.message_handler(func=lambda m: m.text == "💰 شحن الرصيد")
 def dep_menu(m):
     mk = types.InlineKeyboardMarkup()
-    mk.add(types.InlineKeyboardButton("⚡ آلي (50$)", callback_data="pay_auto"), types.InlineKeyboardButton("💳 يدوي", callback_data="pay_manual"))
-    bot.send_message(m.chat.id, "اشحن حسابك لتفعيل ميزات الـ VIP:", reply_markup=mk)
+    mk.add(types.InlineKeyboardButton("⚡ دفع آلي", callback_data="pay_auto"), 
+           types.InlineKeyboardButton("💳 إرسال إيصال", callback_data="pay_manual"))
+    bot.send_message(m.chat.id, "اختر وسيلة الشحن (سعر الاشتراك: 50$):", reply_markup=mk)
 
 @bot.message_handler(func=lambda m: m.text == "🔍 تحليل عملة 📈")
 def ana_init(m):
@@ -170,14 +182,14 @@ def ana_init(m):
     is_vip = db["vip"].get(uid, 0) > now
     
     if not is_vip and db["free_usage"].get(uid, 0) >= 5:
-        return bot.send_message(m.chat.id, "❌ انتهت المحاولات المجانية (5/5).\nيرجى الاشتراك في VIP للمتابعة.")
+        return bot.send_message(m.chat.id, "❌ انتهت محاولاتك المجانية (5/5).\nاشترك في VIP للحصول على وصول غير محدود.")
     
-    msg = bot.send_message(m.chat.id, "🎯 أرسل رمز العملة (XRP, BTC...):")
+    msg = bot.send_message(m.chat.id, "🎯 أرسل رمز العملة (XRP, BTC, STABL...):")
     bot.register_next_step_handler(msg, ana_execute)
 
 def ana_execute(m):
     if m.text in ["🔍 تحليل عملة 📈", "👤 حسابي", "💰 شحن الرصيد"]: return
-    bot.send_message(m.chat.id, "⏳ جاري استخراج التقرير الفني...")
+    bot.send_message(m.chat.id, "⏳ جاري استخراج البيانات...")
     res = get_v36_analysis(m.text)
     if res:
         uid = str(m.from_user.id)
@@ -185,7 +197,7 @@ def ana_execute(m):
             db["free_usage"][uid] = db["free_usage"].get(uid, 0) + 1
             save_db()
         bot.send_message(m.chat.id, res, parse_mode="Markdown")
-    else: bot.send_message(m.chat.id, "⚠️ لم نجد بيانات لهذه العملة، تأكد من الرمز.")
+    else: bot.send_message(m.chat.id, "⚠️ الرمز غير صحيح أو العملة غير مدعومة حالياً.")
 
 @bot.message_handler(func=lambda m: m.text == "👤 حسابي")
 def my_acc(m):
