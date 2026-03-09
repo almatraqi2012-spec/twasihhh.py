@@ -8,16 +8,16 @@ app = Flask('')
 @app.route('/')
 def home(): return "RADAR SYSTEM ONLINE"
 
-# هذا الرابط هو الذي تستخدمه في إعدادات Oxapay (IPN URL) للتفعيل الآلي
 @app.route('/payment/webhook', methods=['POST'])
 def webhook():
     data = request.json
-    if data.get('status') == 'confirmed':
-        target_id = data.get('description') # نضع الآيدي في الوصف عند إنشاء الفاتورة
+    if data and data.get('status') == 'confirmed':
+        target_id = data.get('description') 
         if target_id:
             db["vip"][str(target_id)] = time.time() + (30 * 86400)
             save_db()
-            bot.send_message(int(target_id), "✅ تم دفع الاشتراك بنجاح! تم تفعيل حساب VIP الخاص بك آلياً لمدة 30 يوم.")
+            try: bot.send_message(int(target_id), "✅ تم دفع الاشتراك بنجاح! تم تفعيل حساب VIP الخاص بك آلياً لمدة 30 يوم.")
+            except: pass
     return "OK", 200
 
 def run_server():
@@ -103,41 +103,35 @@ def get_v36_analysis(symbol):
 # --- [ 4. نظام الشحن والتفعيل ] ---
 @bot.callback_query_handler(func=lambda call: True)
 def handle_query(call):
-    uid = str(call.message.chat.id)
+    uid = call.message.chat.id
+    if call.data == "pay_auto":
+        create_invoice(call.message, 50)
     
-    if call.data == "pay_manual":
-        bot.send_message(uid, f"📌 حول لعنوان المحفظة:\n`{MY_WALLET}`\n\nثم أرسل الإيصال هنا.")
+    elif call.data == "pay_manual":
+        bot.send_message(uid, f"📌 حول 50$ لعنوان المحفظة:\n`{MY_WALLET}`\n\nثم أرسل صورة الإيصال.")
         bot.register_next_step_handler(call.message, wait_for_receipt)
     
     elif call.data.startswith("adm_confirm_"):
-        # استخراج آيدي العميل من بيانات الزر
-        target_id = call.data.split("_")[2]
+        # تم الإصلاح هنا: نأخذ الجزء الأخير وهو الآيدي دائماً
+        target_id = call.data.split("_")[-1] 
         
-        # التفعيل في قاعدة البيانات وحفظها فوراً
         db["vip"][str(target_id)] = time.time() + (30 * 86400)
         save_db()
         
-        # إشعار للمالك (أنت)
         bot.answer_callback_query(call.id, "✅ تم تفعيل العميل بنجاح!", show_alert=True)
-        
-        # إشعار للعميل المشترك
-        try:
-            bot.send_message(int(target_id), "✅ **تهانينا! تم تفعيل اشتراك VIP الخاص بك بنجاح.**\n\nيمكنك الآن استخدام ميزة التحليل بلا حدود.")
-        except:
-            pass
-            
-        # تحديث الرسالة عند المالك
+        try: bot.send_message(int(target_id), "✅ تم تفعيل حساب VIP الخاص بك بنجاح من قبل الإدارة.")
+        except: pass
         bot.edit_message_caption(chat_id=OWNER_ID, message_id=call.message.message_id, 
-                                 caption=f"✅ تم تفعيل العميل: {target_id}\nالحالة: VIP 👑")
+                                 caption=f"✅ تم تفعيل العميل: `{target_id}` بنجاح.")
+
 def create_invoice(m, amt):
     try:
-        # إنشاء فاتورة بـ 50 دولار ثابتة مع وضع آيدي العميل في الوصف للتفعيل الآلي
         payload = {
             'merchant': OXAPAY_KEY,
             'amount': amt,
             'currency': 'USD',
             'description': str(m.chat.id),
-            'callbackUrl': 'https://your-app-name.replit.app/payment/webhook' # استبدل برابط تطبيقك
+            'callbackUrl': 'https://your-app-name.replit.app/payment/webhook' 
         }
         res = requests.post("https://api.oxapay.com/merchants/request", json=payload).json()
         if res.get('payLink'):
@@ -147,9 +141,11 @@ def create_invoice(m, amt):
 
 def wait_for_receipt(m):
     if m.photo:
+        # هنا جعلنا الآيدي في نهاية الـ callback_data لضمان قراءته صح
         mk = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("✅ تفعيل العميل", callback_data=f"adm_confirm_vip_{m.chat.id}"))
         bot.send_photo(OWNER_ID, m.photo[-1].file_id, caption=f"🔔 إيصال جديد من: `{m.chat.id}`", reply_markup=mk)
-        bot.send_message(m.chat.id, "✅ استلمنا الإيصال، انتظر التفعيل.")
+        bot.send_message(m.chat.id, "✅ استلمنا الإيصال، انتظر التفعيل من الإدارة.")
+    else: bot.send_message(m.chat.id, "⚠️ يرجى إرسال صورة الإيصال.")
 
 # --- [ 5. القوائم ] ---
 @bot.message_handler(commands=['start'])
@@ -165,32 +161,38 @@ def start(m):
 def dep_menu(m):
     mk = types.InlineKeyboardMarkup()
     mk.add(types.InlineKeyboardButton("⚡ آلي (50$)", callback_data="pay_auto"), types.InlineKeyboardButton("💳 يدوي", callback_data="pay_manual"))
-    bot.send_message(m.chat.id, "اشتراك VIP (30 يوم) بـ 50$:", reply_markup=mk)
+    bot.send_message(m.chat.id, "اشحن حسابك لتفعيل ميزات الـ VIP:", reply_markup=mk)
 
 @bot.message_handler(func=lambda m: m.text == "🔍 تحليل عملة 📈")
 def ana_init(m):
     uid = str(m.from_user.id)
-    if not db["vip"].get(uid, 0) > time.time() and db["free_usage"].get(uid, 0) >= 5:
-        return bot.send_message(m.chat.id, "❌ انتهت المحاولات المجانية (5/5).")
-    msg = bot.send_message(m.chat.id, "🎯 أرسل رمز العملة:")
+    now = time.time()
+    is_vip = db["vip"].get(uid, 0) > now
+    
+    if not is_vip and db["free_usage"].get(uid, 0) >= 5:
+        return bot.send_message(m.chat.id, "❌ انتهت المحاولات المجانية (5/5).\nيرجى الاشتراك في VIP للمتابعة.")
+    
+    msg = bot.send_message(m.chat.id, "🎯 أرسل رمز العملة (XRP, BTC...):")
     bot.register_next_step_handler(msg, ana_execute)
 
 def ana_execute(m):
     if m.text in ["🔍 تحليل عملة 📈", "👤 حسابي", "💰 شحن الرصيد"]: return
+    bot.send_message(m.chat.id, "⏳ جاري استخراج التقرير الفني...")
     res = get_v36_analysis(m.text)
     if res:
         uid = str(m.from_user.id)
-        if not db["vip"].get(uid, 0) > time.time():
-            db["free_usage"][uid] = db["free_usage"].get(uid, 0) + 1; save_db()
+        if not (db["vip"].get(uid, 0) > time.time()):
+            db["free_usage"][uid] = db["free_usage"].get(uid, 0) + 1
+            save_db()
         bot.send_message(m.chat.id, res, parse_mode="Markdown")
-    else: bot.send_message(m.chat.id, "⚠️ لم نجد العملة.")
+    else: bot.send_message(m.chat.id, "⚠️ لم نجد بيانات لهذه العملة، تأكد من الرمز.")
 
 @bot.message_handler(func=lambda m: m.text == "👤 حسابي")
 def my_acc(m):
     uid = str(m.from_user.id)
     is_vip = db["vip"].get(uid, 0) > time.time()
     st = "VIP 👑" if is_vip else f"مجاني ({db['free_usage'].get(uid, 0)}/5)"
-    bot.send_message(m.chat.id, f"👤 حسابك: {st}")
+    bot.send_message(m.chat.id, f"👤 **تفاصيل الحساب:**\n🆔: `{uid}`\n🌟 الحالة: {st}")
 
 if __name__ == "__main__":
     bot.infinity_polling(skip_pending=True)
