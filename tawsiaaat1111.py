@@ -27,7 +27,7 @@ def run_server():
 threading.Thread(target=run_server, daemon=True).start()
 
 # --- [ 2. الإعدادات والبيانات ] ---
-API_TOKEN = '8461494562:AAEgsbKEI93_C3TNb8B9i9D99arx7QwPg9M'
+API_TOKEN = '8461494562:AAEQGbNessZGroYrttf5_gDRsVfNJ2j_6MI'
 OWNER_ID = 6016547718
 OXAPAY_KEY = "CE8H0F-ISXBD2-RXHALY-KZXUZU"
 MY_WALLET = "TLtLuhkU2kkkR1Wz1TtrBTpoNRTNviYpsA"
