@@ -2,12 +2,10 @@ import requests, telebot, time, json, os, threading
 from telebot import types
 from flask import Flask, request
 
-# --- [ 1. سيرفر الاستقبال والويب هوك ] ---
+# --- [ 1. سيرفر الاستقبال ] ---
 app = Flask(__name__)
-
 @app.route('/')
-def home(): 
-    return "RADAR V45 POWERFUL ENGINE ONLINE"
+def home(): return "RADAR V50 - SMART ANALYSIS ACTIVE"
 
 @app.route('/payment/webhook', methods=['POST'])
 def webhook():
@@ -21,12 +19,12 @@ def webhook():
             except: pass
     return "OK", 200
 
-# --- [ 2. الإعدادات والبيانات ] ---
+# --- [ 2. الإعدادات ] ---
 API_TOKEN = '8461494562:AAEQGbNessZGroYrttf5_gDRsVfNJ2j_6MI'
 OWNER_ID = 6016547718
 OXAPAY_KEY = "CE8H0F-ISXBD2-RXHALY-KZXUZU"
 MY_WALLET = "TLtLuhkU2kkkR1Wz1TtrBTpoNRTNviYpsA"
-DB_FILE = "radar_v45_final.json"
+DB_FILE = "radar_v50_final.json"
 
 bot = telebot.TeleBot(API_TOKEN)
 
@@ -38,14 +36,13 @@ def load_db():
     return {"vip": {}, "free_usage": {}, "users": []}
 
 db = load_db()
-
 def save_db():
     try:
         with open(DB_FILE, 'w') as f: json.dump(db, f)
     except: pass
 
-# --- [ 3. محرك التحليل V45 - الهجومي والواقعي ] ---
-def get_v45_analysis(symbol):
+# --- [ 3. محرك التحليل V50 - يفرق بين الصعود الحقيقي والوهمي ] ---
+def get_v50_analysis(symbol):
     s = symbol.upper().strip().replace("/", "").replace("-", "")
     if not s.endswith("USDT") and len(s) < 7: s += "USDT"
     
@@ -65,60 +62,59 @@ def get_v45_analysis(symbol):
                 break
         except: continue
 
-    if not data or len(data) < 30: return None
+    if not data or len(data) < 40: return None
 
     try:
         closes = [float(c[4]) for c in data]
-        p = closes[-1]
+        p = closes[-1] # السعر الحالي
+        prev_p = closes[-2] # سعر الشمعة السابقة
         
-        # مؤشرات الحركة السريعة
+        # مؤشرات دقيقة
         up = [max(0, closes[i] - closes[i-1]) for i in range(-14, 0)]
         dn = [max(0, closes[i-1] - closes[i]) for i in range(-14, 0)]
         rsi = 100 - (100 / (1 + (sum(up)/sum(dn) if sum(dn) != 0 else 1)))
         
-        ema_fast = sum(closes[-10:]) / 10 # متوسط سريع جداً للاستجابة
-        ema_slow = sum(closes[-30:]) / 30
-        std_dev = (sum([(x - ema_slow)**2 for x in closes[-20:]]) / 20)**0.5
+        ema_fast = sum(closes[-10:]) / 10
+        ema_trend = sum(closes[-30:]) / 30 # فلتر الاتجاه العام
+        std_dev = (sum([(x - ema_fast)**2 for x in closes[-20:]]) / 20)**0.5
 
-        # تحليل الاتجاه الهجومي
-        if p > ema_fast and rsi > 50:
-            # حالة الصعود القوي (LONG)
-            sig, emo, txt = "🚀 دخول شراء (LONG)", "🟢", "انفجار سعري وزخم صعودي قوي جداً."
-            t1, t2, sl = p + (std_dev * 1.8), p + (std_dev * 3.5), p - (std_dev * 2.2)
+        # منطق التحليل المطور (V50)
+        # 1. حالة النزول القوي (SHORT) - إذا كسر المتوسطات والسعر ينخفض
+        if p < ema_fast or (p < prev_p and rsi < 55):
+            sig, emo, txt = "📉 دخول بيع (SHORT)", "🔴", "ضغط بيعي قوي، السعر تحت مستويات الدعم والشموع سلبية."
+            t1, t2, sl = p - (std_dev * 1.5), p - (std_dev * 3.0), p + (std_dev * 2.0)
             
-        elif p < ema_fast and rsi < 50:
-            # حالة الهبوط القوي (SHORT)
-            sig, emo, txt = "📉 دخول بيع (SHORT)", "🔴", "انهيار في الدعم وضغط بيعي حاد."
-            t1, t2, sl = p - (std_dev * 1.8), p - (std_dev * 3.5), p + (std_dev * 2.2)
+        # 2. حالة الصعود الحقيقي (LONG) - يجب أن يكون فوق المتوسطين والزخم إيجابي
+        elif p > ema_fast and p > ema_trend and rsi > 52:
+            sig, emo, txt = "🚀 دخول شراء (LONG)", "🟢", "اختراق ناجح للمقاومات مع زخم شرائي مؤكد."
+            t1, t2, sl = p + (std_dev * 1.5), p + (std_dev * 3.0), p - (std_dev * 2.0)
             
+        # 3. حالة التذبذب أو الحيرة
         else:
-            # منطقة تذبذب بسيطة
-            sig, emo, txt = "⏳ ترقب - حركة جانبية", "⚪", "السعر في مرحلة تجميع، انتظر كسر القمة أو القاع."
-            t1, t2, sl = p * 1.02, p * 1.05, p * 0.97
+            sig, emo, txt = "⏳ منطقة انتظار", "⚪", "السوق غير مستقر حالياً، ننتظر اتجاه أوضح."
+            t1, t2, sl = p * 1.01, p * 1.03, p * 0.98
 
         chart_link = f"https://www.tradingview.com/chart/?symbol={source_name}:{s}"
         
-        return (f"🏛 **رادار القابضة - التقرير الفني V45**\n━━━━━━━━━━━━━━\n"
+        return (f"🏛 **رادار القابضة - التقرير الفني V50**\n━━━━━━━━━━━━━━\n"
                 f"🪙 العملة: #{s} {emo}\n💰 السعر: `{p}` | 📊 RSI: `{round(rsi,1)}` \n"
-                f"🌐 المصدر: {source_name} | 🛡️ الحالة: واقعية 🔥\n━━━━━━━━━━━━━━\n"
+                f"🌐 المصدر: {source_name} | 🛡️ الحالة: واقعية ✅\n━━━━━━━━━━━━━━\n"
                 f"💡 الإشارة: **{sig}**\n📌 التحليل: {txt}\n━━━━━━━━━━━━━━\n"
                 f"🎯 هدف 1: `{round(t1, 5)}` \n🎯 هدف 2: `{round(t2, 5)}` \n🛡️ الوقف: `{round(sl, 5)}` \n\n"
                 f"🔗 [عرض الشارت المباشر]({chart_link})")
     except: return None
 
-# --- [ 4. نظام الشحن والخدمات ] ---
+# --- [ 4. باقي مهام البوت - كما هي بدون نقص ] ---
 @bot.callback_query_handler(func=lambda call: True)
 def handle_query(call):
     uid = call.message.chat.id
-    if call.data == "pay_auto":
-        create_invoice(call.message, 50)
+    if call.data == "pay_auto": create_invoice(call.message, 50)
     elif call.data == "pay_manual":
         bot.send_message(uid, f"📌 حول 50$ (TRC20):\n`{MY_WALLET}`\nأرسل الإيصال.")
         bot.register_next_step_handler(call.message, wait_for_receipt)
     elif call.data.startswith("confirm_"):
         target_id = str(call.data.split("_")[-1])
-        db["vip"][target_id] = time.time() + (30 * 86400)
-        save_db()
+        db["vip"][target_id] = time.time() + (30 * 86400); save_db()
         bot.answer_callback_query(call.id, "✅ تم التفعيل!")
         try: bot.send_message(int(target_id), "✅ **تم تفعيل VIP بنجاح.**")
         except: pass
@@ -129,7 +125,7 @@ def create_invoice(m, amt):
                             json={'merchant': OXAPAY_KEY, 'amount': amt, 'currency': 'USD', 'description': str(m.chat.id)}).json()
         if res.get('payLink'):
             mk = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("💳 ادفع الآن", url=res['payLink']))
-            bot.send_message(m.chat.id, "🏛 فاتورة اشتراك VIP", reply_markup=mk)
+            bot.send_message(m.chat.id, "🏛 فاتورة VIP", reply_markup=mk)
     except: bot.send_message(m.chat.id, "⚠️ عطل مؤقت.")
 
 def wait_for_receipt(m):
@@ -138,15 +134,13 @@ def wait_for_receipt(m):
         bot.send_photo(OWNER_ID, m.photo[-1].file_id, caption=f"🔔 إيصال من: `{m.chat.id}`", reply_markup=mk)
         bot.send_message(m.chat.id, "⏳ جاري المراجعة...")
 
-# --- [ 5. القوائم والتشغيل ] ---
 @bot.message_handler(commands=['start'])
 def start(m):
     uid = str(m.from_user.id)
     if uid not in db["users"]: db["users"].append(uid); save_db()
     mk = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    mk.row("🔍 تحليل عملة 📈", "👤 حسابي")
-    mk.row("💰 شحن الرصيد")
-    bot.send_message(m.chat.id, "🏛 **رادار القابضة V45 PRO**\nأقوى محرك تحليل هجومي.", reply_markup=mk)
+    mk.row("🔍 تحليل عملة 📈", "👤 حسابي", "💰 شحن الرصيد")
+    bot.send_message(m.chat.id, "🏛 **رادار القابضة V50 PRO**\nنظام التحليل الفني المطور بموثوقية عالية.", reply_markup=mk)
 
 @bot.message_handler(func=lambda m: m.text == "🔍 تحليل عملة 📈")
 def ana_init(m):
@@ -158,13 +152,12 @@ def ana_init(m):
 
 def ana_execute(m):
     if m.text in ["🔍 تحليل عملة 📈", "👤 حسابي", "💰 شحن الرصيد"]: return
-    bot.send_message(m.chat.id, "⏳ جاري تحليل الاتجاه والسيولة...")
-    res = get_v45_analysis(m.text)
+    bot.send_message(m.chat.id, "⏳ جاري فحص الاتجاه والسيولة بدقة...")
+    res = get_v50_analysis(m.text)
     if res:
         uid = str(m.from_user.id)
         if not (db["vip"].get(uid, 0) > time.time()):
-            db["free_usage"][uid] = db["free_usage"].get(uid, 0) + 1
-            save_db()
+            db["free_usage"][uid] = db["free_usage"].get(uid, 0) + 1; save_db()
         bot.send_message(m.chat.id, res, parse_mode="Markdown")
     else: bot.send_message(m.chat.id, "⚠️ الرمز غير مدعوم.")
 
@@ -182,11 +175,8 @@ def my_acc(m):
     st = "VIP 👑" if is_vip else f"مجاني ({db['free_usage'].get(uid, 0)}/5)"
     bot.send_message(m.chat.id, f"👤 **حسابك:**\n🆔: `{uid}`\n🌟 الحالة: {st}")
 
-def run_bot():
-    bot.infinity_polling(skip_pending=True)
-
 if __name__ == "__main__":
-    t = threading.Thread(target=run_bot)
+    t = threading.Thread(target=lambda: bot.infinity_polling(skip_pending=True))
     t.start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
