@@ -110,9 +110,22 @@ def create_invoice(chat_id):
 def start_cmd(m):
     uid = str(m.chat.id)
     if uid not in db["users"]: db["users"].append(uid); save_db()
+    
+    # رسالة ترحيبية تسويقية قوية
+    welcome_text = (
+        "🏛 **أهلاً بك في رادار القابضة V90**\n\n"
+        "أقوى منظومة تتبع ذكية لاقتناص فرص التداول في سوق العملات الرقمية. "
+        "نحن لا نقدم مجرد توقعات، نحن نرصد **تحركات السيولة الكبرى** ونمنحك نقاط دخول دقيقة بأهداف واقعية.\n\n"
+        "✅ **ماذا ستحصل عليه هنا؟**\n"
+        "• تنبيهات فورية لأقوى الفرص المتاحة.\n"
+        "• أهداف مدروسة بعناية (واقعية وقابلة للتحقيق).\n"
+        "• إدارة مخاطر صارمة بوقف خسارة دقيق.\n\n"
+        "🚀 **التوصيات ستصلك آلياً هنا فور صدورها.. ابقَ متيقظاً!**"
+    )
+    
     mk = types.ReplyKeyboardMarkup(resize_keyboard=True)
     mk.row("👤 حسابي", "💎 تفعيل VIP")
-    bot.send_message(m.chat.id, "🏛 **رادار القابضة V90**\n\nأنا أراقب السوق الآن بحثاً عن المثلثات والأوردر بلوك. سأرسل لك التوصيات هنا تلقائياً.", reply_markup=mk)
+    bot.send_message(m.chat.id, welcome_text, reply_markup=mk, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda m: m.text == "👤 حسابي")
 def my_account(m):
