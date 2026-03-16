@@ -156,25 +156,39 @@ def auto_signals_engine():
             if time.strftime("%d") != curr_day: sent_count = 0; curr_day = time.strftime("%d")
             
             if sent_count < 6:
+                # طلب قائمة بكل العملات التي تتحرك الآن (تغير سعري > 1%)
+                # هذا يضمن مراقبة السوق كاملاً دون حظر الـ API
                 ticker = requests.get("https://api.binance.com/api/v3/ticker/24hr").json()
-                for item in sorted(ticker, key=lambda x: float(x['quoteVolume']), reverse=True)[:35]:
+                
+                # فلترة ذكية: نأخذ فقط العملات التي سعرها يتحرك (مؤشر على بداية فرصة)
+                potential_list = [i for i in ticker if abs(float(i['priceChangePercent'])) > 1.0 and i['symbol'].endswith("USDT")]
+                
+                # ترتيب القائمة حسب "قوة التغير" للبدء بالأهم
+                for item in sorted(potential_list, key=lambda x: abs(float(x['priceChangePercent'])), reverse=True):
                     s = item['symbol']
-                    if not s.endswith("USDT"): continue
                     df, fs, ex, chart = fetch_market_data(s)
+                    
                     if df is not None:
+                        # شرط السيولة: هل السيولة الآن 3.5 أضعاف المعدل؟
                         vol = df['v'].iloc[-1] / (df['v'].rolling(20).mean().iloc[-1] + 1e-10)
-                        if vol > 4.0: # شرط سيولة قوية جداً
+                        
+                        if vol > 3.5:
                             side, entry, tp1, tp2, sl = calculate_trade_params(df)
-                            msg = (f"💎 **توصية VIP رقم {sent_count+1}**\n━━━━━━━━━━━━━━\n"
-                                   f"🪙 العملة: #{fs}\n🔥 انفجار سيولة: `{round(vol, 2)}x`\n\n"
+                            
+                            msg = (f"💎 **توصية VIP ذهبية (رصد شامل)**\n━━━━━━━━━━━━━━\n"
+                                   f"🪙 العملة: #{fs} | {ex}\n🔥 قوة الانفجار: `{round(vol, 2)}x`\n\n"
                                    f"📥 الدخول: `{entry}`\n🎯 هدف 1: `{tp1}`\n🎯 هدف 2: `{tp2}`\n🛑 الوقف: `{sl}`\n━━━━━━━━━━━━━━\n"
                                    f"📈 [رابط الشارت والتحليل المباشر]({chart})")
+                            
                             for v_uid in db["vip_list"]:
                                 try: bot.send_message(v_uid, msg, parse_mode="Markdown")
                                 except: pass
+                            
                             sent_count += 1
-                            time.sleep(3600 * 3) # فاصل 3 ساعات
-            time.sleep(900)
+                            time.sleep(3600 * 2.5) # فاصل زمني لضمان عدم تداخل الصفقات
+                            break # الخروج من الحلقة للانتظار للفرصة التالية
+            
+            time.sleep(600) # فحص شامل كل 10 دقائق
         except: time.sleep(30)
 
 @bot.message_handler(func=lambda m: m.text == "📞 الدعم")
