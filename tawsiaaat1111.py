@@ -29,34 +29,57 @@ def save_db():
     except: pass
 
 # --- [ 3. المحلل الخارق (صعود وهبوط + قوة الاتجاه) ] ---
-def analyze_crypto_v160(symbol):
+def analyze_crypto_v180(symbol):
     url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1h&limit=100"
     try:
         r = requests.get(url, timeout=10).json()
         df = pd.DataFrame(r, columns=['t','o','h','l','c','v','ct','q','n','tb','tq','i']).astype(float)
         
+        # 1. حساب السعر والمتوسطات
         cp = df['c'].iloc[-1]
-        ema_8 = df['c'].ewm(span=8).mean().iloc[-1]
-        ema_21 = df['c'].ewm(span=21).mean().iloc[-1]
+        ema_20 = df['c'].ewm(span=20, adjust=False).mean().iloc[-1]
         
-        # رصد الانفجار السعري والقيعان (7 ساعات)
-        h7 = df['h'].rolling(7).max().iloc[-2]
-        l7 = df['l'].rolling(7).min().iloc[-2]
+        # 2. مؤشر السيولة (Liquidity Index)
+        # نقارن حجم التداول الحالي بمتوسط آخر 20 شمعة
+        current_volume = df['v'].iloc[-1]
+        avg_volume = df['v'].rolling(20).mean().iloc[-1]
+        liquidity_pump = current_volume / (avg_volume + 1e-10) # نسبة تدفق السيولة
         
-        # مؤشر القوة النسبية RSI
+        # 3. مؤشر MACD
+        ema12 = df['c'].ewm(span=12, adjust=False).mean()
+        ema26 = df['c'].ewm(span=26, adjust=False).mean()
+        macd = ema12 - ema26
+        signal_line = macd.ewm(span=9, adjust=False).mean()
+        
+        # 4. مؤشر RSI
         delta = df['c'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-        rsi = 100 - (100 / (1 + (gain.iloc[-1] / loss.iloc[-1])))
+        rsi = 100 - (100 / (1 + (gain.iloc[-1] / (loss.iloc[-1] + 1e-10))))
 
-        # منطق الـ LONG (صعود)
-        if cp > ema_8 and cp > h7 and rsi > 48:
-            return {"side": "LONG 🚀", "p": cp, "t": cp*1.035, "s": cp*0.97, "power": "قوي 🔥"}
-        # منطق الـ SHORT (هبوط)
-        elif cp < ema_8 and cp < l7 and rsi < 52:
-            return {"side": "SHORT 📉", "p": cp, "t": cp*0.965, "s": cp*1.03, "power": "عالي ⚡"}
+        # --- [ شروط الدخول مع تأكيد السيولة ] ---
+        
+        # سيولة قوية تعني أن الحجم الحالي أكبر بـ 20% على الأقل من المتوسط
+        strong_liquidity = liquidity_pump > 1.2 
+
+        # حالة LONG (صعود مدعوم بسيولة)
+        if cp > ema_20 and macd.iloc[-1] > signal_line.iloc[-1] and rsi > 50 and strong_liquidity:
+            return {
+                "side": "LONG 🚀", 
+                "p": cp, "t": cp*1.04, "s": cp*0.97, 
+                "liq": f"{round(liquidity_pump, 2)}x 🔥"
+            }
+            
+        # حالة SHORT (هبوط مع تخارج سيولة أو ضغط بيعي)
+        elif cp < ema_20 and macd.iloc[-1] < signal_line.iloc[-1] and rsi < 50 and strong_liquidity:
+            return {
+                "side": "SHORT 📉", 
+                "p": cp, "t": cp*0.96, "s": cp*1.03, 
+                "liq": f"{round(liquidity_pump, 2)}x ⚠️"
+            }
+            
         return None
-    except: return None
+    except: return None 
 
 # --- [ 4. الرادار الشامل لجميع العملات ] ---
 def run_scanner():
