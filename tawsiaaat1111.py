@@ -3,18 +3,17 @@ import pandas as pd
 from telebot import types
 from flask import Flask, request
 
-# --- [ الإعدادات الكبرى - ضع بياناتك هنا ] ---
+# --- [ الإعدادات الكبرى ] ---
 API_TOKEN = '8461494562:AAEQGbNessZGroYrttf5_gDRsVfNJ2j_6MI'
 OWNER_ID = 6016547718 
+OXAPAY_KEY = "CE8H0F-ISXBD2-RXHALY-KZXUZU" # مفتاح التاجر الخاص بك
 MY_USDT_WALLET = "TLtLuhkU2kkkR1Wz1TtrBTpoNRTNviYpsA"
-# ⬇️ ضع مفتاح التاجر هنا ليعمل الدفع التلقائي
-OXAPAY_MERCHANT_KEY = "CE8H0F-ISXBD2-RXHALY-KZXUZU" 
-DB_FILE = "radar_global_final_v1400.json"
+DB_FILE = "radar_v1500_master.json"
 
 bot = telebot.TeleBot(API_TOKEN)
-app = Flask(__name__) # نظام لاستقبال تنبيهات الدفع التلقائي
+app = Flask(__name__)
 
-# --- [ إدارة قاعدة البيانات ] ---
+# --- [ إدارة البيانات ] ---
 def load_db():
     if os.path.exists(DB_FILE):
         try:
@@ -28,24 +27,43 @@ def save_db():
         with open(DB_FILE, 'w') as f: json.dump(db, f, indent=4)
     except: pass
 
-# --- [ محرك جلب البيانات من المنصتين ] ---
-def fetch_global_data(symbol):
+# --- [ محرك التحليل الخبير ] ---
+def expert_analysis(symbol):
     s = symbol.upper().replace("#", "").strip()
     if not s.endswith("USDT"): s += "USDT"
+    
     endpoints = [
         (f"https://api.binance.com/api/v3/klines?symbol={s}&interval=1h&limit=100", "Binance 🟡"),
         (f"https://api.mexc.com/api/v3/klines?symbol={s}&interval=60m&limit=100", "MEXC 🟢")
     ]
+    
     for url, source in endpoints:
         try:
             r = requests.get(url, timeout=10)
             if r.status_code == 200:
                 df = pd.DataFrame(r.json()).astype(float)
-                cp, ema = df[4].iloc[-1], df[4].ewm(span=20).mean().iloc[-1]
-                side = "LONG 🚀" if cp > ema else "SHORT 📉"
-                tp = cp * 1.025 if side == "LONG 🚀" else cp * 0.975
-                sl = df[3].iloc[-15:].min() * 0.99 if side == "LONG 🚀" else df[2].iloc[-15:].max() * 1.01
-                return f"🏛 **نتائج تحليل {source}**\n━━━━━━━━━━━━━━\n🪙 العملة: #{s}\n📊 الإشارة: **{side}**\n📥 الدخول: `{cp}`\n🎯 الهدف: `{round(tp,4)}`\n🛑 الوقف: `{round(sl,4)}`", s
+                cp = df[4].iloc[-1]
+                ema20 = df[4].ewm(span=20).mean().iloc[-1]
+                ema50 = df[4].ewm(span=50).mean().iloc[-1]
+                vol_status = "مرتفعة 🔥" if df[5].iloc[-1] > df[5].rolling(20).mean().iloc[-1] else "مستقرة ⚖️"
+                
+                # منطق التحليل الفني
+                side = "LONG 🚀" if cp > ema20 else "SHORT 📉"
+                reason = "اختراق متوسط 20 وتدفق سيولة" if side == "LONG 🚀" else "كسر متوسط 20 وضغط بيعي"
+                
+                tp = cp * 1.03 if side == "LONG 🚀" else cp * 0.97
+                sl = df[3].iloc[-10:].min() * 0.99 if side == "LONG 🚀" else df[2].iloc[-10:].max() * 1.01
+                chart = f"https://www.tradingview.com/chart/?symbol={source.split()[0]}:{s}"
+                
+                text = (f"🏛 **تقرير رادار القابضة الفني ({source})**\n━━━━━━━━━━━━━━\n"
+                        f"🪙 العملة: #{s}\n📊 الإشارة: **{side}**\n\n"
+                        f"📥 سعر الدخول: `{cp}`\n🎯 الهدف المتوقع: `{round(tp,4)}`\n🛑 وقف الخسارة: `{round(sl,4)}`\n\n"
+                        f"🔍 **لماذا هذه الصفقة؟**\n"
+                        f"✅ الحالة: {reason}\n"
+                        f"✅ السيولة الحالية: {vol_status}\n"
+                        f"✅ الاتجاه: بناءً على تقاطع المتوسطات الأسيّة.\n━━━━━━━━━━━━━━\n"
+                        f"📈 [مشاهدة الشارت المباشر من هنا]({chart})")
+                return text, s
         except: continue
     return None, None
 
@@ -56,42 +74,18 @@ def is_vip(uid):
         return datetime.datetime.now() < exp
     return False
 
-# --- [ نظام الدفع التلقائي OxaPay ] ---
-def create_auto_payment(uid):
-    url = "https://api.oxapay.com/merchants/request"
-    data = {
-        "merchant": OXAPAY_MERCHANT_KEY,
-        "amount": 50,
-        "currency": "USDT",
-        "lifeTime": 60,
-        "feePaidByPayer": 1,
-        "description": str(uid),
-        "callbackUrl": "https://your-server-link.com/webhook" # ضع رابط السيرفر هنا
-    }
-    try:
-        res = requests.post(url, json=data).json()
-        if res.get("result") == 100: return res.get("payLink")
-    except: return None
+# --- [ واجهات الأزرار ] ---
+def main_menu():
+    m = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    m.add("🔍 المحلل الذكي", "👑 اشتراك VIP", "👤 حسابي")
+    return m
 
-@app.route('/webhook', methods=['POST'])
-def payment_webhook():
-    data = request.json
-    if data and data.get('status') in ['paid', 'confirmed']:
-        uid = str(data.get('description'))
-        exp = (datetime.datetime.now() + datetime.timedelta(days=30)).strftime('%Y-%m-%d')
-        db["vip_list"][uid] = exp; save_db()
-        bot.send_message(uid, f"👑 **تم تفعيل اشتراكك التلقائي بنجاح!**\nصالح حتى: {exp}")
-    return "OK", 200
-
-# --- [ الواجهات الرئيسية ] ---
 @bot.message_handler(commands=['start'])
 def start(m):
     uid = str(m.chat.id)
     if uid not in db["users"]: db["users"][uid] = {"free_total": 0, "daily_count": 0}
     save_db()
-    m_menu = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    m_menu.add("🔍 المحلل الذكي", "👑 اشتراك VIP", "👤 حسابي")
-    bot.send_message(uid, "🏛 **رادار القابضة V1400**\nأهلاً بك في نظام التداول العالمي.", reply_markup=m_menu)
+    bot.send_message(uid, "🏛 **مرحباً بك في رادار القابضة V1500**\nنظام التحليل الخبير (Binance + MEXC).", reply_markup=main_menu())
 
 @bot.message_handler(func=lambda m: m.text == "👤 حسابي")
 def my_account(m):
@@ -99,11 +93,11 @@ def my_account(m):
     vip = is_vip(uid)
     u_data = db["users"].get(uid, {"free_total": 0, "daily_count": 0})
     count = u_data.get("daily_count", 0) if vip else u_data.get("free_total", 0)
-    limit = "6" if vip else "5"
     msg = (f"👤 **بيانات الحساب**\n━━━━━━━━━━━━━━\n🏆 الحالة: **{'👑 VIP' if vip else '🆓 مجاني'}**\n"
-           f"🗓 انتهاء الاشتراك: `{db['vip_list'].get(uid, 'غير نشط')}`\n📊 استهلاك اليوم: **{count}/{limit}**\n━━━━━━━━━━━━━━")
+           f"🗓 انتهاء الاشتراك: `{db['vip_list'].get(uid, 'غير نشط')}`\n📊 استهلاك اليوم: **{count}/{'6' if vip else '5'}**\n━━━━━━━━━━━━━━")
     bot.send_message(uid, msg, parse_mode="Markdown")
 
+# --- [ المحلل الذكي ] ---
 @bot.message_handler(func=lambda m: m.text == "🔍 المحلل الذكي")
 def analysis_gate(m):
     uid = str(m.chat.id)
@@ -118,60 +112,83 @@ def analysis_gate(m):
 def process_analysis(m):
     uid = str(m.chat.id)
     if m.text in ["🔍 المحلل الذكي", "👑 اشتراك VIP", "👤 حسابي"]: return
-    res, symbol = fetch_global_data(m.text)
+    res, symbol = expert_analysis(m.text)
     if res:
-        bot.send_message(uid, res, parse_mode="Markdown")
+        bot.send_message(uid, res, parse_mode="Markdown", disable_web_page_preview=False)
         if is_vip(uid): db["users"][uid]["daily_count"] += 1
         else: db["users"][uid]["free_total"] += 1
         save_db()
     else: bot.send_message(uid, "❌ العملة غير موجودة.")
 
+# --- [ نظام التفعيل المزدوج (تلقائي + دراجون) ] ---
 @bot.message_handler(func=lambda m: m.text == "👑 اشتراك VIP")
 def vip_menu(m):
+    text = "💎 **عضوية VIP الاحترافية (50$)**\n- 6 تحليلات خبيرة يومياً.\n- 6 توصيات آلية مع الشارت.\n- تفعيل فوري."
     mk = types.InlineKeyboardMarkup(row_width=1)
     mk.add(types.InlineKeyboardButton("⚡ تفعيل تلقائي (فوري)", callback_data="pay_auto"))
     mk.add(types.InlineKeyboardButton("📥 تفعيل يدوي (إرسال إيصال)", callback_data="pay_manual"))
-    bot.send_message(m.chat.id, "💎 **باقة VIP الاحترافية (50$)**\nاختر وسيلة الدفع:", reply_markup=mk)
+    bot.send_message(m.chat.id, text, reply_markup=mk)
 
 @bot.callback_query_handler(func=lambda call: True)
-def router(call):
+def query_router(call):
     uid = str(call.message.chat.id)
     if call.data == "pay_auto":
-        link = create_auto_payment(uid)
-        if link: bot.send_message(uid, f"🔗 [اضغط هنا للدفع والتفعيل الفوري]({link})", parse_mode="Markdown")
-        else: bot.send_message(uid, "⚠️ عذراً، بوابة الدفع معطلة حالياً.")
+        # طلب رابط دفع من OxaPay
+        r = requests.post("https://api.oxapay.com/merchants/request", json={"merchant": OXAPAY_KEY, "amount": 50, "currency": "USDT", "description": uid}).json()
+        if r.get("result") == 100: bot.send_message(uid, f"🔗 [اضغط هنا للدفع الفوري]({r.get('payLink')})", parse_mode="Markdown")
     elif call.data == "pay_manual":
         bot.send_message(uid, f"📥 حول **50$ USDT** لـ:\n`{MY_USDT_WALLET}`\nثم أرسل صورة الإيصال.")
-    elif call.data.startswith("act_"): # تفعيل المالك (نظام دراجون)
+    elif call.data.startswith("confirm_"):
         tid = call.data.split("_")[1]
         exp = (datetime.datetime.now() + datetime.timedelta(days=30)).strftime('%Y-%m-%d')
         db["vip_list"][tid] = exp; save_db()
-        bot.send_message(tid, f"👑 تم تفعيل اشتراكك بنجاح حتى: {exp}")
-        bot.edit_message_caption(chat_id=OWNER_ID, message_id=call.message.message_id, caption=f"✅ تم تفعيل المشترك {tid}")
+        bot.send_message(tid, f"👑 تم تفعيل اشتراكك! صالح حتى: {exp}")
+        bot.edit_message_caption(chat_id=OWNER_ID, message_id=call.message.message_id, caption=f"✅ تم تفعيل {tid}")
 
+# --- [ نظام دراجون: استقبال الإيصالات ] ---
 @bot.message_handler(content_types=['photo', 'text'])
-def handle_support(m):
+def support_logic(m):
     uid = str(m.chat.id)
     if m.text and (m.text.startswith('/') or m.text in ["🔍 المحلل الذكي", "👑 اشتراك VIP", "👤 حسابي"]): return
     if uid == str(OWNER_ID): return
     if m.content_type == 'photo':
         mk = types.InlineKeyboardMarkup()
-        mk.add(types.InlineKeyboardButton(f"✅ تفعيل {uid} (50$)", callback_data=f"act_{uid}"))
+        mk.add(types.InlineKeyboardButton(f"✅ تفعيل {uid} (50$)", callback_data=f"confirm_{uid}"))
         bot.send_photo(OWNER_ID, m.photo[-1].file_id, caption=f"🖼 إيصال جديد من: `{uid}`", reply_markup=mk)
-        bot.send_message(uid, "✅ تم إرسال الإيصال للمراجعة.")
+        bot.send_message(uid, "✅ تم إرسال الإيصال للمالك.")
     else: bot.send_message(OWNER_ID, f"📩 رسالة من `{uid}`: {m.text}")
 
-# --- [ محركات التوصيات والوقت ] ---
-def run_signals():
+# --- [ محرك التوصيات الـ 6 (خلفية) ] ---
+def auto_signals():
     sent = 0
+    last_day = datetime.datetime.now().day
     while True:
-        if sent < 6:
-            # (منطق جلب التوصيات وإرسالها للـ VIP)
-            sent += 1
-            time.sleep(3600 * 3)
-        time.sleep(600)
+        try:
+            now = datetime.datetime.now()
+            if now.day != last_day: sent = 0; last_day = now.day
+            if sent < 6:
+                ticker = requests.get("https://api.binance.com/api/v3/ticker/24hr").json()
+                for item in sorted(ticker, key=lambda x: abs(float(x['priceChangePercent'])), reverse=True)[:10]:
+                    res, s = expert_analysis(item['symbol'])
+                    if res:
+                        msg = f"💎 **توصية VIP إمبراطورية ({sent+1}/6)**\n" + res
+                        for v_id in list(db["vip_list"].keys()):
+                            if is_vip(v_id): bot.send_message(v_id, msg, parse_mode="Markdown")
+                        sent += 1
+                        time.sleep(3600 * 3) # توزيع التوصيات
+                        break
+            time.sleep(900)
+        except: time.sleep(30)
+
+def reset_limits():
+    while True:
+        now = datetime.datetime.now()
+        if now.hour == 0 and now.minute == 0:
+            for u in db["users"]: db["users"][u]["daily_count"] = 0
+            save_db()
+        time.sleep(60)
 
 if __name__ == "__main__":
-    threading.Thread(target=run_signals, daemon=True).start()
-    threading.Thread(target=lambda: app.run(host='0.0.0.0', port=8080), daemon=True).start()
+    threading.Thread(target=auto_signals, daemon=True).start()
+    threading.Thread(target=reset_limits, daemon=True).start()
     bot.infinity_polling()
