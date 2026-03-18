@@ -13,7 +13,9 @@ DB_FILE = "radar_v2000_final.json"
 
 bot = telebot.TeleBot(API_TOKEN)
 app = Flask(__name__)
-
+@app.route('/')
+def index():
+    return "Radar System is Online & Active 🚀"
 # --- [ نظام قاعدة البيانات ] ---
 def load_db():
     if os.path.exists(DB_FILE):
