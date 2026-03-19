@@ -209,20 +209,16 @@ def reset_daily_usage():
 
 # تأكد أن هذا الجزء في نهاية الملف تماماً
 if __name__ == "__main__":
-    # 1. تشغيل خيط التوصيات التلقائية
-    threading.Thread(target=auto_signals_engine, daemon=True).start()
+    # تأكد أن الأسماء هنا تطابق أسماء الدوال فوق بالضبط
+    if 'auto_signals_engine' in globals():
+        threading.Thread(target=auto_signals_engine, daemon=True).start()
     
-    # 2. تشغيل خيط تصفير العداد اليومي
-    threading.Thread(target=reset_limits, daemon=True).start()
-    
-    # 3. جلب المنفذ من نظام Render (إجباري لـ Web Service)
+    if 'reset_limits' in globals():
+        threading.Thread(target=reset_limits, daemon=True).start()
+
+    # جلب المنفذ وتشغيل الرسيفر
     port = int(os.environ.get("PORT", 10000))
-    
-    # 4. تشغيل Flask (الرسيفر) في خيط مستقل
-    # هذا هو السطر الذي سيجعل UptimeRobot يعطيك Up (أخضر)
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=port), daemon=True).start()
     
-    print(f"📡 Radar System is LIVE on Port: {port}")
-    
-    # 5. تشغيل البوت الأساسي (يجب أن يكون الأخير دائماً)
+    print(f"📡 Radar System is LIVE on Port {port}")
     bot.infinity_polling()
