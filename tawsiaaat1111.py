@@ -186,7 +186,7 @@ def recommendation_loop():
             if sent_count < 6:
                 ticker = requests.get("https://api.binance.com/api/v3/ticker/24hr").json()
                 # اختيار العملات الأكثر صعوداً (حركة حقيقية)
-                top_movers = sorted(ticker, key=lambda x: float(x['priceChangePercent']), reverse=True)[:5]
+                top_movers = sorted(ticker, key=lambda x: float(x['priceChangePercent']), reverse=True)[:10]
                 for item in top_movers:
                     res, s = fetch_expert_analysis(item['symbol'])
                     if res:
@@ -196,7 +196,7 @@ def recommendation_loop():
                             try: bot.send_message(v_id, f"💎 **توصية VIP حقيقية ({sent_count+1}/6)**\n" + res, parse_mode="Markdown")
                             except: pass
                         sent_count += 1
-                        time.sleep(10800) # فحص كل 3 ساعات
+                        time.sleep(1800) # فحص كل 3 ساعات
                         break
             time.sleep(600)
         except Exception as e:
