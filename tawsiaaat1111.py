@@ -101,10 +101,22 @@ def main_menu():
 def start_cmd(m):
     uid = str(m.chat.id)
     check_limit(uid) # لإنشاء بيانات المستخدم
-    bot.send_message(uid, "🏛 ** مرحباً بك في المحلل الذكي⚡
-لتحليل أسواق الكريبتو والمضاربة اللحظية على منصات:
-🔶 Binance (بينانس)
-🟢 MEXC (إم إي إكس سي) **\nأقوى بوت تحليل وتوصيات.", reply_markup=main_menu())
+    
+    # رسالة ترحيب احترافية ومصلحة برمجياً
+    welcome_text = """🏛 **مرحباً بك في المحلل الذكي⚡**
+
+النظام مخصص **فقط** لتحليل أسواق الكريبتو والمضاربة اللحظية:
+🔶 منصة **Binance** (بينانس)
+🟢 منصة **MEXC** (إم إي إكس سي)
+
+**ماذا يقدم لك الرادار؟**
+🎯 تحليل فني دقيق لكل العملات الرقمية.
+🔍 رادار لاقتناص السيولة وتقاطعات المؤشرات.
+🚫 **تنبيه:** النظام لا يدعم أسواق الفوركس أو الأسهم حالياً.
+
+**أقوى بوت تحليل وتوصيات في خدمتك! 🚀**"""
+    
+    bot.send_message(uid, welcome_text, reply_markup=main_menu(), parse_mode="Markdown")
 
 @bot.message_handler(func=lambda m: m.text == "👤 حسابي")
 def my_account(m):
@@ -116,7 +128,6 @@ def my_account(m):
     
     msg = (f"👤 **معلومات حسابك**\n━━━━━━━━━━━━━━\n"
            f"🏆 الحالة: **{'👑 VIP' if vip else '🆓 مجاني'}**\n"
-           f"🗓 الانتهاء: `{db['vip_list'].get(uid, '2026-04-18' if vip else 'لا يوجد')}`\n"
            f"📊 استهلاك اليوم: **{count}/{limit}**\n━━━━━━━━━━━━━━")
     bot.send_message(uid, msg, parse_mode="Markdown")
 
@@ -188,18 +199,17 @@ def recommendation_loop():
             
             if sent_count < 6:
                 ticker = requests.get("https://api.binance.com/api/v3/ticker/24hr").json()
-                # اختيار العملات الأكثر صعوداً (حركة حقيقية)
                 top_movers = sorted(ticker, key=lambda x: float(x['priceChangePercent']), reverse=True)[:10]
                 for item in top_movers:
                     res, s = fetch_expert_analysis(item['symbol'])
                     if res:
                         vips = [u for u in db["vip_list"] if is_vip(u)]
-                        vips.append(str(OWNER_ID)) # ضمان وصولها لك
+                        vips.append(str(OWNER_ID))
                         for v_id in set(vips):
                             try: bot.send_message(v_id, f"💎 **توصية VIP حقيقية ({sent_count+1}/6)**\n" + res, parse_mode="Markdown")
                             except: pass
                         sent_count += 1
-                        time.sleep(1800) # فحص كل 3 ساعات
+                        time.sleep(14400) # إرسال توصية كل 4 ساعات لتغطية اليوم
                         break
             time.sleep(600)
         except Exception as e:
@@ -207,7 +217,6 @@ def recommendation_loop():
 
 # --- [ التشغيل النهائي ] ---
 if __name__ == "__main__":
-    # تشغيل خيوط المعالجة
     threading.Thread(target=recommendation_loop, daemon=True).start()
     
     port = int(os.environ.get("PORT", 10000))
