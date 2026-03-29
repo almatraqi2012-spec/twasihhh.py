@@ -101,7 +101,10 @@ def main_menu():
 def start_cmd(m):
     uid = str(m.chat.id)
     check_limit(uid) # لإنشاء بيانات المستخدم
-    bot.send_message(uid, "🏛 **مرحباً بك في رادار القابضة V2000**\nأقوى بوت تحليل وتوصيات.", reply_markup=main_menu())
+    bot.send_message(uid, "🏛 ** مرحباً بك في المحلل الذكي⚡
+لتحليل أسواق الكريبتو والمضاربة اللحظية على منصات:
+🔶 Binance (بينانس)
+🟢 MEXC (إم إي إكس سي) **\nأقوى بوت تحليل وتوصيات.", reply_markup=main_menu())
 
 @bot.message_handler(func=lambda m: m.text == "👤 حسابي")
 def my_account(m):
