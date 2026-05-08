@@ -28,4 +28,4 @@ jobs:
       - name: Run twasihhh Bot
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-        run: python twasihhh.py
+        run: python tawsiaaat1111.py
