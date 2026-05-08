@@ -1,0 +1,31 @@
+name: twasihhh Auto Run
+
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # التعديل الجوهري هنا: تثبيت المكتبات الصحيحة لكودك
+          pip install pyTelegramBotAPI telethon requests flask
+
+      - name: Run twasihhh Bot
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        run: python twasihhh.py
