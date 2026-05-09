@@ -4,7 +4,7 @@ from telebot import types
 from flask import Flask
 
 # --- [ الإعدادات الكبرى - بياناتك ثابتة ] ---
-API_TOKEN = '8461494562:AAEQGbNessZGroYrttf5_gDRsVfNJ2j_6MI'
+API_TOKEN = os.environ.get('BOT_TOKEN')
 OWNER_ID = 6016547718 
 MY_USDT_WALLET = "TLtLuhkU2kkkR1Wz1TtrBTpoNRTNviYpsA"
 OXAPAY_MERCHANT_KEY = "CE8H0F-ISXBD2-RXHALY-KZXUZU" 
