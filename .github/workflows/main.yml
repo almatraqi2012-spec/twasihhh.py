@@ -1,10 +1,10 @@
 - name: Install Dependencies
         run: |
           pip install --upgrade pip
-          pip install python-telegram-bot ccxt pandas requests # أضف مكاتب التحليل التي تستخدمها هنا
+          pip install python-telegram-bot ccxt pandas requests
 
-      - name: Run Crypto Analyzer
+- name: Run Crypto Analyzer
         env:
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true # هذا السطر سيخفي تحذيرات الـ Node.js التي ظهرت لك
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         run: python tawsiaaat1111.py
