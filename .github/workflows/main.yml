@@ -1,4 +1,4 @@
-name: twasihhh Auto Run
+name: twasihhh.py Auto Run
 
 on:
   push:
@@ -25,7 +25,7 @@ jobs:
           # التعديل الجوهري هنا: تثبيت المكتبات الصحيحة لكودك
           pip install pyTelegramBotAPI telethon requests flask
 
-      - name: Run twasihhh Bot
+      - name: Run twasihhh.py Bot
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         run: python tawsiaaat1111.py
