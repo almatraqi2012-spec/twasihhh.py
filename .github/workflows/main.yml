@@ -1,10 +1,19 @@
-- name: Install Dependencies
+steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
         run: |
           pip install --upgrade pip
-          pip install pyTelegramBotAPI requests flask pandas numpy ccxt
+          # السطر التالي هو الحل لخطأ ModuleNotFoundError
+          pip install pandas pyTelegramBotAPI requests numpy ccxt
 
-      - name: Run Crypto Analyzer
+      - name: Run Bot
         env:
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-        run: python tawsiaaat1111.py# تأكد من اسم ملفك هنا (radd22.py أو الاسم الجديد)
+        run: python tawsiaaat1111.py
