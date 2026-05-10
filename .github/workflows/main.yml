@@ -1,4 +1,14 @@
-steps:
+name: Crypto-Analyzer-Bot
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  run-bot-job: # هذا هو المطلب الناقص (jobs)
+    runs-on: ubuntu-latest
+    steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
@@ -10,7 +20,6 @@ steps:
       - name: Install Dependencies
         run: |
           pip install --upgrade pip
-          # السطر التالي هو الحل لخطأ ModuleNotFoundError
           pip install pandas pyTelegramBotAPI requests numpy ccxt
 
       - name: Run Bot
