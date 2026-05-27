@@ -188,37 +188,51 @@ def handle_receipt(m):
     bot.send_message(uid, "✅ تم إرسال الإيصال للمراجعة.")
 
 # --- [ محرك التوصيات الـ 6 (إصلاح شامل) ] ---
+# --- [ محرك التوصيات الـ 6 (إصلاح شامل ومؤمن 100%) ] ---
 def recommendation_loop():
-    print("🚀 محرك التوصيات انطلق...")
+    print("🚀 محرك التوصيات انطلق مع نظام الحماية الفائق...")
     sent_count = 0
     last_reset = datetime.datetime.now().day
     while True:
         try:
             now = datetime.datetime.now()
-            if now.day != last_reset: sent_count = 0; last_reset = now.day
+            if now.day != last_reset: 
+                sent_count = 0
+                last_reset = now.day
             
             if sent_count < 6:
-                ticker = requests.get("https://api.binance.com/api/v3/ticker/24hr").json()
-                top_movers = sorted(ticker, key=lambda x: float(x['priceChangePercent']), reverse=True)[:10]
-                for item in top_movers:
-                    res, s = fetch_expert_analysis(item['symbol'])
-                    if res:
-                        vips = [u for u in db["vip_list"] if is_vip(u)]
-                        vips.append(str(OWNER_ID))
-                        for v_id in set(vips):
-                            try: bot.send_message(v_id, f"💎 **توصية VIP حقيقية ({sent_count+1}/6)**\n" + res, parse_mode="Markdown")
-                            except: pass
-                        sent_count += 1
-                        time.sleep(14400) # إرسال توصية كل 4 ساعات لتغطية اليوم
-                        break
-            time.sleep(600)
+                response = requests.get("https://api.binance.com/api/v3/ticker/24hr", timeout=15)
+                
+                # 🛑 نظام الحماية: التأكد من أن السيرفر استجاب بنجاح (200)
+                if response.status_code == 200:
+                    ticker = response.json()
+                    
+                    # 🛑 نظام الحماية الثاني: التأكد أن النتيجة قائمة عملات (List) وليست رسالة خطأ
+                    if isinstance(ticker, list):
+                        top_movers = sorted(ticker, key=lambda x: float(x.get('priceChangePercent', 0)), reverse=True)[:10]
+                        
+                        for item in top_movers:
+                            res, s = fetch_expert_analysis(item['symbol'])
+                            if res:
+                                vips = [u for u in db["vip_list"] if is_vip(u)]
+                                vips.append(str(OWNER_ID))
+                                for v_id in set(vips):
+                                    try: 
+                                        bot.send_message(v_id, f"💎 **توصية VIP حقيقية ({sent_count+1}/6)**\n" + res, parse_mode="Markdown")
+                                    except: 
+                                        pass
+                                sent_count += 1
+                                time.sleep(14400) # إرسال توصية كل 4 ساعات لتغطية اليوم
+                                break
+                    else:
+                        print("⚠️ تحذير: استجابة بايننس ليست قائمة عملات. قد يكون هناك قيود على الطلبات.")
+                else:
+                    print(f"⚠️ فشل الاتصال ببايننس، كود الحالة: {response.status_code}")
+                    
+            time.sleep(600) # فحص كل 10 دقائق
         except Exception as e:
-            print(f"Error in loop: {e}"); time.sleep(60)
-
-# --- [ التشغيل النهائي ] ---
-if __name__ == "__main__":
-    threading.Thread(target=recommendation_loop, daemon=True).start()
-    
+            print(f"Error in loop: {e}")
+            time.sleep(60) # انتظر دقيقة في حال حدوث أي خطأ عابر قبل إعادة المحاولة
     port = int(os.environ.get("PORT", 10000))
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=port), daemon=True).start()
     
