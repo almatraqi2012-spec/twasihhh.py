@@ -4,6 +4,9 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
+  schedule:
+    # سيقوم هذا السطر بإعادة تشغيل البوت تلقائياً كل 5 ساعات لضمان استمراريته دون انقطاع
+    - cron: '0 */5 * * *'
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -24,7 +27,14 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install pandas pyTelegramBotAPI requests numpy ccxt flask
-      - name: Run Bot
+
+      - name: Run Bot Permanently
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-        run: python tawsiaaat1111.py
+        run: |
+          # تشغيل البوت في الخلفية باستخدام علامة &
+          python tawsiaaat1111.py &
+          
+          # إجبار السيرفر على الانتظار وعدم إغلاق الجلسة
+          echo "البوت يعمل الآن في الخلفية... السيرفر قيد الانتظار الدائم."
+          sleep infinity
