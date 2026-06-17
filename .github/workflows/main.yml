@@ -5,8 +5,8 @@ on:
     branches: [ main ]
   workflow_dispatch:
   schedule:
-    # سيقوم هذا السطر بإعادة تشغيل البوت تلقائياً كل 5 ساعات لضمان استمراريته دون انقطاع
-    - cron: '0 */5 * * *'
+    # 🔄 تحديث لإعادة التشغيل كل 4 ساعات كمسافة أمان قبل حد الموت (6 ساعات)
+    - cron: '0 */4 * * *'
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -31,10 +31,5 @@ jobs:
       - name: Run Bot Permanently
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-        run: |
-          # تشغيل البوت في الخلفية باستخدام علامة &
-          python tawsiaaat1111.py &
-          
-          # إجبار السيرفر على الانتظار وعدم إغلاق الجلسة
-          echo "البوت يعمل الآن في الخلفية... السيرفر قيد الانتظار الدائم."
-          sleep infinity
+        # ⚠️ تم حذف علامة & وأمر sleep infinity لتشغيل البوت بشكل مستقر ومباشر
+        run: python tawsiaaat1111.py
