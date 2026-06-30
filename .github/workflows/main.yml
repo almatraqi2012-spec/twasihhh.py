@@ -31,5 +31,6 @@ jobs:
       - name: Run Bot Permanently
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-        # ⚠️ تم حذف علامة & وأمر sleep infinity لتشغيل البوت بشكل مستقر ومباشر
-        run: python tawsiaaat1111.py
+         تم حذف علامة & وأم#ر sleep infinity لتشغيل البوت بشكل مستقر ومباشر
+        run: python tawsiaaat1111.py &
+         sleep infinity
