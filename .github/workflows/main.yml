@@ -26,11 +26,13 @@ jobs:
       - name: Install Dependencies
         run: |
           pip install --upgrade pip
-          pip install pandas pyTelegramBotAPI requests numpy ccxt flask
+          pip install pandas pyTelegramBotAPI requests numpy ccxt flask telethon supabase
 
       - name: Run Bot Permanently
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-         تم حذف علامة & وأم#ر sleep infinity لتشغيل البوت بشكل مستقر ومباشر
-        run: python tawsiaaat1111.py &
-         sleep infinity
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          python tawsiaaat1111.py &
+          sleep infinity
