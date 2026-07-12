@@ -1,4 +1,10 @@
-import requests, telebot, time, json, os, threading, datetime
+import requests
+import telebot
+import time
+import json
+import os
+import threading
+import datetime
 import pandas as pd
 from telebot import types
 from flask import Flask
@@ -14,40 +20,50 @@ bot = telebot.TeleBot(API_TOKEN)
 app = Flask(__name__)
 
 @app.route('/')
-def index(): return "Radar System is Online & Active 🚀"
+def index(): 
+    return "Radar System is Online & Active 🚀"
 
 # --- [ نظام قاعدة البيانات المطور ] ---
 def load_db():
     if os.path.exists(DB_FILE):
         try:
-            with open(DB_FILE, 'r') as f: return json.load(f)
-        except: pass
+            with open(DB_FILE, 'r') as f: 
+                return json.load(f)
+        except: 
+            pass
     return {"users": {}, "vip_list": {}}
 
 db = load_db()
 
 def save_db():
     try:
-        with open(DB_FILE, 'w') as f: json.dump(db, f, indent=4)
-    except: pass
+        with open(DB_FILE, 'w') as f: 
+            json.dump(db, f, indent=4)
+    except: 
+        pass
 
 # --- [ فحص الـ VIP والمالك ] ---
 def is_vip(uid):
     uid = str(uid)
-    if int(uid) == OWNER_ID: return True # المالك VIP للأبد
+    if int(uid) == OWNER_ID: 
+        return True # المالك VIP للأبد
     if uid in db["vip_list"]:
         try:
             exp = datetime.datetime.strptime(db["vip_list"][uid], '%Y-%m-%d')
-            if datetime.datetime.now() < exp: return True
+            if datetime.datetime.now() < exp: 
+                return True
             else:
-                del db["vip_list"][uid]; save_db()
-        except: return False
+                del db["vip_list"][uid]
+                save_db()
+        except: 
+            return False
     return False
 
 # --- [ المحرك التحليلي الخبير ] ---
 def fetch_expert_analysis(symbol):
     s = symbol.upper().replace("#", "").strip()
-    if not s.endswith("USDT"): s += "USDT"
+    if not s.endswith("USDT"): 
+        s += "USDT"
     endpoints = [
         (f"https://api.binance.com/api/v3/klines?symbol={s}&interval=1h&limit=100", "Binance 🟡"),
         (f"https://api.mexc.com/api/v3/klines?symbol={s}&interval=60m&limit=100", "MEXC 🟢")
@@ -70,16 +86,19 @@ def fetch_expert_analysis(symbol):
                        f"✅ الحالة: {vol_status}\n━━━━━━━━━━━━━━\n"
                        f"📈 [عرض الشارت المباشر]({chart})")
                 return msg, s
-        except: continue
+        except: 
+            continue
     return None, None
 
 # --- [ نظام العداد الذكي ] ---
 def check_limit(uid):
     uid = str(uid)
-    if int(uid) == OWNER_ID: return True, 0 # المالك لا حدود له
+    if int(uid) == OWNER_ID: 
+        return True, 0 # المالك لا حدود له
     
     today = datetime.datetime.now().strftime('%Y-%m-%d')
-    if uid not in db["users"]: db["users"][uid] = {"count": 0, "last_date": today}
+    if uid not in db["users"]: 
+        db["users"][uid] = {"count": 0, "last_date": today}
     
     u_data = db["users"][uid]
     if u_data.get("last_date") != today: # تصفير يومي تلقائي
@@ -88,7 +107,8 @@ def check_limit(uid):
         save_db()
 
     limit = 6 if is_vip(uid) else 5
-    if u_data["count"] >= limit: return False, limit
+    if u_data["count"] >= limit: 
+        return False, limit
     return True, u_data["count"]
 
 # --- [ الواجهات ] ---
@@ -102,7 +122,6 @@ def start_cmd(m):
     uid = str(m.chat.id)
     check_limit(uid) # لإنشاء بيانات المستخدم
     
-    # رسالة ترحيب احترافية ومصلحة برمجياً
     welcome_text = """🏛 **مرحباً بك في المحلل الذكي⚡**
 
 النظام مخصص **فقط** لتحليل أسواق الكريبتو والمضاربة اللحظية:
@@ -124,7 +143,8 @@ def my_account(m):
     vip = is_vip(uid)
     _, count = check_limit(uid)
     limit = "6" if vip else "5"
-    if int(uid) == OWNER_ID: limit = "∞"
+    if int(uid) == OWNER_ID: 
+        limit = "∞"
     
     msg = (f"👤 **معلومات حسابك**\n━━━━━━━━━━━━━━\n"
            f"🏆 الحالة: **{'👑 VIP' if vip else '🆓 مجاني'}**\n"
@@ -143,13 +163,15 @@ def analysis_gate(m):
 
 def run_analysis(m):
     uid = str(m.chat.id)
-    if m.text in ["🔍 المحلل الذكي", "👑 اشتراك VIP", "👤 حسابي"]: return
+    if m.text in ["🔍 المحلل الذكي", "👑 اشتراك VIP", "👤 حسابي"]: 
+        return
     res, symbol = fetch_expert_analysis(m.text)
     if res:
         bot.send_message(uid, res, parse_mode="Markdown")
         db["users"][uid]["count"] += 1
         save_db()
-    else: bot.send_message(uid, "❌ العملة غير مدعومة حالياً.")
+    else: 
+        bot.send_message(uid, "❌ العملة غير مدعومة حالياً.")
 
 @bot.message_handler(func=lambda m: m.text == "👑 اشتراك VIP")
 def vip_page(m):
@@ -168,26 +190,28 @@ def handle_calls(call):
             r = requests.post("https://api.oxapay.com/merchants/request", json=payload).json()
             if r.get("result") == 100:
                 bot.send_message(uid, f"🔗 [اضغط هنا للدفع والتفعيل]({r.get('payLink')})", parse_mode="Markdown")
-        except: bot.send_message(uid, "⚠️ بوابة الدفع غير مستقرة.")
+        except: 
+            bot.send_message(uid, "⚠️ بوابة الدفع غير مستقرة.")
     elif call.data == "pay_manual":
         bot.send_message(uid, f"📥 حول **50$ USDT** لـ:\n`{MY_USDT_WALLET}`\nثم أرسل صورة الإيصال.")
     elif call.data.startswith("dragon_"):
         target_id = call.data.split("_")[1]
         exp = (datetime.datetime.now() + datetime.timedelta(days=30)).strftime('%Y-%m-%d')
-        db["vip_list"][target_id] = exp; save_db()
+        db["vip_list"][target_id] = exp
+        save_db()
         bot.send_message(target_id, f"👑 **تم تفعيل VIP بنجاح!**\nصالح حتى: {exp}")
         bot.edit_message_caption(chat_id=OWNER_ID, message_id=call.message.message_id, caption=f"✅ تم تفعيل `{target_id}`")
 
 @bot.message_handler(content_types=['photo'])
 def handle_receipt(m):
     uid = str(m.chat.id)
-    if int(uid) == OWNER_ID: return
+    if int(uid) == OWNER_ID: 
+        return
     admin_mk = types.InlineKeyboardMarkup()
     admin_mk.add(types.InlineKeyboardButton(f"✅ تفعيل {uid}", callback_data=f"dragon_{uid}"))
     bot.send_photo(OWNER_ID, m.photo[-1].file_id, caption=f"🖼 إيصال جديد من `{uid}`", reply_markup=admin_mk)
     bot.send_message(uid, "✅ تم إرسال الإيصال للمراجعة.")
 
-# --- [ محرك التوصيات الـ 6 (إصلاح شامل) ] ---
 # --- [ محرك التوصيات الـ 6 (إصلاح شامل ومؤمن 100%) ] ---
 def recommendation_loop():
     print("🚀 محرك التوصيات انطلق مع نظام الحماية الفائق...")
@@ -207,7 +231,7 @@ def recommendation_loop():
                 if response.status_code == 200:
                     ticker = response.json()
                     
-                    # 🛑 نظام الحماية الثاني: التأكد أن النتيجة قائمة عملات (List) وليست رسالة خطأ
+                    # 🛑 نظام الحماية الثاني: التأكد أن النتيجة قائمة عملات (List)
                     if isinstance(ticker, list):
                         top_movers = sorted(ticker, key=lambda x: float(x.get('priceChangePercent', 0)), reverse=True)[:10]
                         
@@ -225,16 +249,28 @@ def recommendation_loop():
                                 time.sleep(14400) # إرسال توصية كل 4 ساعات لتغطية اليوم
                                 break
                     else:
-                        print("⚠️ تحذير: استجابة بايننس ليست قائمة عملات. قد يكون هناك قيود على الطلبات.")
+                        print("⚠️ تحذير: استجابة بايننس ليست قائمة عملات.")
                 else:
                     print(f"⚠️ فشل الاتصال ببايننس، كود الحالة: {response.status_code}")
                     
             time.sleep(600) # فحص كل 10 دقائق
         except Exception as e:
             print(f"Error in loop: {e}")
-            time.sleep(60) # انتظر دقيقة في حال حدوث أي خطأ عابر قبل إعادة المحاولة
+            time.sleep(60) # انتظر دقيقة في حال حدوث أي خطأ عابر
+
+# --- [ تشغيل الخوادم والخدمات بنظام التعدد الهيكلي ] ---
+def run_flask():
     port = int(os.environ.get("PORT", 10000))
-    threading.Thread(target=lambda: app.run(host='0.0.0.0', port=port), daemon=True).start()
+    print(f"📡 الويب سيرفر يعمل على بورت: {port}")
+    app.run(host='0.0.0.0', port=port)
+
+if __name__ == "__main__":
+    # 1. تشغيل سيرفر ويب Flask في الخلفية
+    threading.Thread(target=run_flask, daemon=True).start()
     
-    print(f"📡 Radar V2000 is LIVE on Port {port}")
+    # 2. تشغيل حلقة التوصيات التلقائية في الخلفية
+    threading.Thread(target=recommendation_loop, daemon=True).start()
+    
+    # 3. تشغيل البوت الأساسي ليبقى حياً داخل جيت هاب أكشنز
+    print("📡 Radar V2000 is LIVE, Active & Connected...")
     bot.infinity_polling(timeout=60, long_polling_timeout=30)
