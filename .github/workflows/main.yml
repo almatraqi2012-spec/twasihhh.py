@@ -5,8 +5,8 @@ on:
     branches: [ main ]
   workflow_dispatch:
   schedule:
-    # 🔄 تحديث لإعادة التشغيل كل 4 ساعات كمسافة أمان قبل حد الموت (6 ساعات)
-    - cron: '0 */4 * * *'
+    # 🔄 إعادة التشغيل تلقائياً كل ساعتين لضمان استمرار البوت
+    - cron: '0 */2 * * *'
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -14,6 +14,7 @@ env:
 jobs:
   run-bot-job:
     runs-on: ubuntu-latest
+    
     steps:
       - name: Checkout Code
         uses: actions/checkout@v5
@@ -25,14 +26,12 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install --upgrade pip
-          pip install pandas pyTelegramBotAPI requests numpy ccxt flask telethon supabase
+          python -m pip install --upgrade pip
+          pip install pandas pyTelegramBotAPI requests numpy ccxt flask telethon
 
-      - name: Run Bot Permanently
+      - name: Run Bot
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: |
-          python tawsiaaat1111.py &
-          sleep infinity
+          # تشغيل السكربت مباشرة وبشكل نظيف
+          python tawsiaaat1111.py
