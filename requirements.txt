@@ -5,3 +5,4 @@ numpy
 ccxt
 flask
 gunicorn
+pandas-ta
