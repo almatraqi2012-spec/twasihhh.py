@@ -63,6 +63,7 @@ def is_vip(uid):
 import pandas_ta as ta  # تأكد من استيرادها في أعلى الملف
 
 # --- [ المحرك التحليلي الخبير المطور ] ---
+# --- [ المحرك التحليلي الخبير والمستقل ] ---
 def fetch_expert_analysis(symbol):
     s = symbol.upper().replace("#", "").strip()
     if not s.endswith("USDT"): 
@@ -84,15 +85,27 @@ def fetch_expert_analysis(symbol):
                 df = pd.DataFrame(data).astype(float)
                 df.columns = ['time', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'qav', 'num_trades', 'taker_base_vol', 'taker_quote_vol', 'ignore']
                 
-                # حساب المؤشرات الفنية المتقدمة
-                df['ema20'] = ta.ema(df['close'], length=20)
-                df['rsi'] = ta.rsi(df['close'], length=14)
-                atr_series = ta.atr(df['high'], df['low'], df['close'], length=14)
+                # حساب المؤشرات يطريقة برمجية نظيفة ودقيقة بدون الحاجة لـ pandas-ta
+                df['ema20'] = df['close'].ewm(span=20, adjust=False).mean()
                 
-                if atr_series is None or atr_series.empty:
+                # حساب RSI (14)
+                delta = df['close'].diff()
+                gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                rs = gain / loss
+                df['rsi'] = 100 - (100 / (1 + rs))
+                
+                # حساب ATR (14)
+                high_low = df['high'] - df['low']
+                high_close = abs(df['high'] - df['close'].shift())
+                low_close = abs(df['low'] - df['close'].shift())
+                tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+                df['atr'] = tr.rolling(window=14).mean()
+                
+                if df['atr'].empty or pd.isna(df['atr'].iloc[-1]):
                     continue
                 
-                atr = atr_series.iloc[-1]
+                atr = df['atr'].iloc[-1]
                 cp = df['close'].iloc[-1]
                 ema20 = df['ema20'].iloc[-1]
                 rsi = df['rsi'].iloc[-1]
@@ -101,7 +114,7 @@ def fetch_expert_analysis(symbol):
                 
                 vol_status = "انفجار سيولة 🔥" if vol_current > vol_avg * 1.5 else "سيولة مستقرة ⚖️"
                 
-                # شروط الدخول باستخدام RSI و ATR
+                # شروط الدخول باستخدام المؤشرات المحسوبة
                 if cp > ema20 and rsi < 65:
                     side = "LONG 🚀"
                     tp = cp + (atr * 2.0)
