@@ -60,36 +60,80 @@ def is_vip(uid):
     return False
 
 # --- [ المحرك التحليلي الخبير ] ---
+import pandas_ta as ta  # تأكد من استيرادها في أعلى الملف
+
+# --- [ المحرك التحليلي الخبير المطور ] ---
 def fetch_expert_analysis(symbol):
     s = symbol.upper().replace("#", "").strip()
     if not s.endswith("USDT"): 
         s += "USDT"
+    
     endpoints = [
         (f"https://api.binance.com/api/v3/klines?symbol={s}&interval=1h&limit=100", "Binance 🟡"),
         (f"https://api.mexc.com/api/v3/klines?symbol={s}&interval=60m&limit=100", "MEXC 🟢")
     ]
+    
     for url, source in endpoints:
         try:
             r = requests.get(url, timeout=10)
             if r.status_code == 200:
-                df = pd.DataFrame(r.json()).astype(float)
-                cp = df[4].iloc[-1]
-                ema20 = df[4].ewm(span=20).mean().iloc[-1]
-                vol_status = "انفجار سيولة 🔥" if df[5].iloc[-1] > df[5].rolling(20).mean().iloc[-1] * 1.5 else "سيولة مستقرة ⚖️"
-                side = "LONG 🚀" if cp > ema20 else "SHORT 📉"
-                tp = cp * 1.03 if side == "LONG 🚀" else cp * 0.97
-                sl = df[3].iloc[-10:].min() * 0.985 if side == "LONG 🚀" else df[2].iloc[-10:].max() * 1.015
-                chart = f"https://www.tradingview.com/chart/?symbol={source.split()[0]}:{s}"
-                msg = (f"🏛 **تقرير رادار القابضة الخبير ({source})**\n━━━━━━━━━━━━━━\n"
-                       f"🪙 العملة: #{s}\n📊 الإشارة: **{side}**\n\n"
-                       f"📥 الدخول: `{cp}`\n🎯 الهدف: `{round(tp,4)}`\n🛑 الوقف: `{round(sl,4)}`\n\n"
-                       f"✅ الحالة: {vol_status}\n━━━━━━━━━━━━━━\n"
+                data = r.json()
+                if not isinstance(data, list) or len(data) < 20:
+                    continue
+                
+                df = pd.DataFrame(data).astype(float)
+                df.columns = ['time', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'qav', 'num_trades', 'taker_base_vol', 'taker_quote_vol', 'ignore']
+                
+                # حساب المؤشرات الفنية المتقدمة
+                df['ema20'] = ta.ema(df['close'], length=20)
+                df['rsi'] = ta.rsi(df['close'], length=14)
+                atr_series = ta.atr(df['high'], df['low'], df['close'], length=14)
+                
+                if atr_series is None or atr_series.empty:
+                    continue
+                
+                atr = atr_series.iloc[-1]
+                cp = df['close'].iloc[-1]
+                ema20 = df['ema20'].iloc[-1]
+                rsi = df['rsi'].iloc[-1]
+                vol_current = df['volume'].iloc[-1]
+                vol_avg = df['volume'].rolling(20).mean().iloc[-1]
+                
+                vol_status = "انفجار سيولة 🔥" if vol_current > vol_avg * 1.5 else "سيولة مستقرة ⚖️"
+                
+                # شروط الدخول باستخدام RSI و ATR
+                if cp > ema20 and rsi < 65:
+                    side = "LONG 🚀"
+                    tp = cp + (atr * 2.0)
+                    sl = cp - (atr * 1.5)
+                elif cp < ema20 and rsi > 35:
+                    side = "SHORT 📉"
+                    tp = cp - (atr * 2.0)
+                    sl = cp + (atr * 1.5)
+                else:
+                    side = "NEUTRAL ⚖️ (تذبذب)"
+                    tp = cp * 1.02
+                    sl = cp * 0.98
+                    
+                exchange_name = source.split()[0]
+                chart = f"https://www.tradingview.com/chart/?symbol={exchange_name}:{s}"
+                
+                msg = (f"🏛 **تقرير رادار القابضة الخبير ({source})**\n"
+                       f"━━━━━━━━━━━━━━\n"
+                       f"🪙 العملة: #{s}\n"
+                       f"📊 الإشارة: **{side}**\n"
+                       f"📈 RSI: `{round(rsi, 2)}`\n"
+                       f"📥 الدخول: `{cp}`\n"
+                       f"🎯 الهدف: `{round(tp, 4)}`\n"
+                       f"🛑 الوقف: `{round(sl, 4)}`\n"
+                       f"✅ الحالة: {vol_status}\n"
+                       f"━━━━━━━━━━━━━━\n"
                        f"📈 [عرض الشارت المباشر]({chart})")
                 return msg, s
-        except: 
+        except Exception:
             continue
+            
     return None, None
-
 # --- [ نظام العداد الذكي ] ---
 def check_limit(uid):
     uid = str(uid)
