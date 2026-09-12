@@ -74,7 +74,8 @@ def fetch_expert_analysis(symbol):
     }
     
     endpoints = [
-        (f"https://api.binance.com/api/v3/klines?symbol={s}&interval=1h&limit=100", "Binance 🟡"),
+        # استخدام Binance Vision API لتجاوز حظر الخوادم السحابية (GitHub Actions)
+        (f"https://data-api.binance.vision/api/v3/klines?symbol={s}&interval=1h&limit=100", "Binance 🟡"),
         (f"https://api.mexc.com/api/v3/klines?symbol={s}&interval=60m&limit=100", "MEXC 🟢")
     ]
     
