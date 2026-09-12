@@ -68,13 +68,11 @@ def fetch_expert_analysis(symbol):
     if not s.endswith("USDT"): 
         s += "USDT"
     
-    # إضافة User-Agent لمنع حظر الطلبات من المنصات
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     }
     
     endpoints = [
-        # استخدام Binance Vision API لتجاوز حظر الخوادم السحابية (GitHub Actions)
         (f"https://data-api.binance.vision/api/v3/klines?symbol={s}&interval=1h&limit=100", "Binance 🟡"),
         (f"https://api.mexc.com/api/v3/klines?symbol={s}&interval=60m&limit=100", "MEXC 🟢")
     ]
@@ -82,72 +80,40 @@ def fetch_expert_analysis(symbol):
     for url, source in endpoints:
         try:
             r = requests.get(url, headers=headers, timeout=10)
-            print(f"DEBUG [{s}] -> Status: {r.status_code}") # لطباعة الحالة في السجل
-            
             if r.status_code == 200:
                 data = r.json()
-                if not isinstance(data, list) or len(data) < 20:
+                if not isinstance(data, list) or len(data) < 10:
                     continue
                 
                 df = pd.DataFrame(data).astype(float)
-                df.columns = ['time', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'qav', 'num_trades', 'taker_base_vol', 'taker_quote_vol', 'ignore']
                 
-                df['ema20'] = df['close'].ewm(span=20, adjust=False).mean()
+                # الاعتماد على المنطق الأصلي البسيط والمضمون
+                cp = df[4].iloc[-1]
+                ema20 = df[4].ewm(span=20).mean().iloc[-1]
                 
-                delta = df['close'].diff()
-                gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-                loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-                rs = gain / loss
-                df['rsi'] = 100 - (100 / (1 + rs))
-                
-                high_low = df['high'] - df['low']
-                high_close = abs(df['high'] - df['close'].shift())
-                low_close = abs(df['low'] - df['close'].shift())
-                tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-                df['atr'] = tr.rolling(window=14).mean()
-                
-                if df['atr'].empty or pd.isna(df['atr'].iloc[-1]):
-                    continue
-                
-                atr = df['atr'].iloc[-1]
-                cp = df['close'].iloc[-1]
-                ema20 = df['ema20'].iloc[-1]
-                rsi = df['rsi'].iloc[-1]
-                vol_current = df['volume'].iloc[-1]
-                vol_avg = df['volume'].rolling(20).mean().iloc[-1]
-                
+                vol_current = df[5].iloc[-1]
+                vol_avg = df[5].rolling(20).mean().iloc[-1]
                 vol_status = "انفجار سيولة 🔥" if vol_current > vol_avg * 1.5 else "سيولة مستقرة ⚖️"
                 
-                if cp > ema20 and rsi < 65:
-                    side = "LONG 🚀"
-                    tp = cp + (atr * 2.0)
-                    sl = cp - (atr * 1.5)
-                elif cp < ema20 and rsi > 35:
-                    side = "SHORT 📉"
-                    tp = cp - (atr * 2.0)
-                    sl = cp + (atr * 1.5)
-                else:
-                    side = "NEUTRAL ⚖️ (تذبذب)"
-                    tp = cp * 1.02
-                    sl = cp * 0.98
-                    
+                side = "LONG 🚀" if cp > ema20 else "SHORT 📉"
+                tp = cp * 1.03 if side == "LONG 🚀" else cp * 0.97
+                sl = df[3].iloc[-10:].min() * 0.985 if side == "LONG 🚀" else df[2].iloc[-10:].max() * 1.015
+                
                 exchange_name = source.split()[0]
                 chart = f"https://www.tradingview.com/chart/?symbol={exchange_name}:{s}"
                 
                 msg = (f"🏛 **تقرير رادار القابضة الخبير ({source})**\n"
                        f"━━━━━━━━━━━━━━\n"
                        f"🪙 العملة: #{s}\n"
-                       f"📊 الإشارة: **{side}**\n"
-                       f"📈 RSI: `{round(rsi, 2)}`\n"
+                       f"📊 الإشارة: **{side}**\n\n"
                        f"📥 الدخول: `{cp}`\n"
                        f"🎯 الهدف: `{round(tp, 4)}`\n"
-                       f"🛑 الوقف: `{round(sl, 4)}`\n"
+                       f"🛑 الوقف: `{round(sl, 4)}`\n\n"
                        f"✅ الحالة: {vol_status}\n"
                        f"━━━━━━━━━━━━━━\n"
                        f"📈 [عرض الشارت المباشر]({chart})")
                 return msg, s
         except Exception as e:
-            print(f"DEBUG Error for {s}: {e}") # لمعرفة الخطأ بالتحديد
             continue
             
     return None, None
