@@ -9,7 +9,7 @@ import pandas as pd
 from telebot import types
 from flask import Flask
 
-# --- [ الإعدادات الكبرى - بياناتك ثابتة ] ---
+# --- [ الإعدادات الكبرى - بياناتك ثابتة ] --
 API_TOKEN = os.environ.get('BOT_TOKEN')
 OWNER_ID = 6016547718 
 MY_USDT_WALLET = "TLtLuhkU2kkkR1Wz1TtrBTpoNRTNviYpsA"
