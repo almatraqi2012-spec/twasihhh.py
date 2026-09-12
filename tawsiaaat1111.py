@@ -68,6 +68,11 @@ def fetch_expert_analysis(symbol):
     if not s.endswith("USDT"): 
         s += "USDT"
     
+    # إضافة User-Agent لمنع حظر الطلبات من المنصات
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    }
+    
     endpoints = [
         (f"https://api.binance.com/api/v3/klines?symbol={s}&interval=1h&limit=100", "Binance 🟡"),
         (f"https://api.mexc.com/api/v3/klines?symbol={s}&interval=60m&limit=100", "MEXC 🟢")
@@ -75,7 +80,9 @@ def fetch_expert_analysis(symbol):
     
     for url, source in endpoints:
         try:
-            r = requests.get(url, timeout=10)
+            r = requests.get(url, headers=headers, timeout=10)
+            print(f"DEBUG [{s}] -> Status: {r.status_code}") # لطباعة الحالة في السجل
+            
             if r.status_code == 200:
                 data = r.json()
                 if not isinstance(data, list) or len(data) < 20:
@@ -84,17 +91,14 @@ def fetch_expert_analysis(symbol):
                 df = pd.DataFrame(data).astype(float)
                 df.columns = ['time', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'qav', 'num_trades', 'taker_base_vol', 'taker_quote_vol', 'ignore']
                 
-                # حساب المؤشرات يطريقة برمجية نظيفة ودقيقة بدون الحاجة لـ pandas-ta
                 df['ema20'] = df['close'].ewm(span=20, adjust=False).mean()
                 
-                # حساب RSI (14)
                 delta = df['close'].diff()
                 gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
                 loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
                 rs = gain / loss
                 df['rsi'] = 100 - (100 / (1 + rs))
                 
-                # حساب ATR (14)
                 high_low = df['high'] - df['low']
                 high_close = abs(df['high'] - df['close'].shift())
                 low_close = abs(df['low'] - df['close'].shift())
@@ -113,7 +117,6 @@ def fetch_expert_analysis(symbol):
                 
                 vol_status = "انفجار سيولة 🔥" if vol_current > vol_avg * 1.5 else "سيولة مستقرة ⚖️"
                 
-                # شروط الدخول باستخدام المؤشرات المحسوبة
                 if cp > ema20 and rsi < 65:
                     side = "LONG 🚀"
                     tp = cp + (atr * 2.0)
@@ -142,7 +145,8 @@ def fetch_expert_analysis(symbol):
                        f"━━━━━━━━━━━━━━\n"
                        f"📈 [عرض الشارت المباشر]({chart})")
                 return msg, s
-        except Exception:
+        except Exception as e:
+            print(f"DEBUG Error for {s}: {e}") # لمعرفة الخطأ بالتحديد
             continue
             
     return None, None
