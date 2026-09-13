@@ -72,7 +72,6 @@ def fetch_expert_analysis(symbol):
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     }
     
-    # استخدام إطار 15 دقيقة الموثوق للتحليل السريع والدقيق
     endpoints = [
         (f"https://data-api.binance.vision/api/v3/klines?symbol={s}&interval=15m&limit=100", "Binance 🟡"),
         (f"https://api.mexc.com/api/v3/klines?symbol={s}&interval=15m&limit=100", "MEXC 🟢")
@@ -83,7 +82,7 @@ def fetch_expert_analysis(symbol):
             r = requests.get(url, headers=headers, timeout=10)
             if r.status_code == 200:
                 data = r.json()
-                if not isinstance(data, list) or len(data) < 40:
+                if not isinstance(data, list) or len(data) < 30:
                     continue
                 
                 df = pd.DataFrame(data).astype(float)
@@ -91,12 +90,10 @@ def fetch_expert_analysis(symbol):
                 
                 cp = df['close'].iloc[-1]
                 op = df['open'].iloc[-1]
-                hp = df['high'].iloc[-1]
-                lp = df['low'].iloc[-1]
                 
-                # حساب مؤشرات الاتجاه والزخم بدقة مؤسسية
-                df['ema20'] = df['close'].ewm(span=20, adjust=False).mean()
-                df['ema50'] = df['close'].ewm(span=50, adjust=False).mean()
+                # استخدام متوسطات حقيقية وسريعة (EMA 7 و EMA 25)
+                df['ema7'] = df['close'].ewm(span=7, adjust=False).mean()
+                df['ema25'] = df['close'].ewm(span=25, adjust=False).mean()
                 
                 # مؤشر RSI (14)
                 delta = df['close'].diff()
@@ -105,49 +102,44 @@ def fetch_expert_analysis(symbol):
                 rs = gain / loss
                 df['rsi'] = 100 - (100 / (1 + rs))
                 
-                ema20 = df['ema20'].iloc[-1]
-                ema50 = df['ema50'].iloc[-1]
+                ema7 = df['ema7'].iloc[-1]
+                ema25 = df['ema25'].iloc[-1]
                 rsi = df['rsi'].iloc[-1]
                 
-                # فحص السيولة وحجم التداول
-                vol_current = df['volume'].iloc[-1]
-                vol_avg = df['volume'].rolling(20).mean().iloc[-1]
-                is_high_volume = vol_current > (vol_avg * 1.2)
-                
-                # شروط صارمة جداً جداً لمنع أي صفقة ضعيفة
-                # صعود (LONG): الاتجاه صاعد (EMA20 > EMA50) + RSI في منطقة صحية (45 إلى 65) + الشمعة خضراء بقوة وبسيولة عالية
-                is_valid_long = (ema20 > ema50) and (45 <= rsi <= 65) and (cp > op) and is_high_volume
-                
-                # هبوط (SHORT): الاتجاه هابط (EMA20 < EMA50) + RSI في منطقة ضغط بيعي (35 إلى 55) + الشمعة حمراء بقوة وبسيولة عالية
-                is_valid_short = (ema20 < ema50) and (35 <= rsi <= 55) and (cp < op) and is_high_volume
-                
-                if is_valid_long:
+                # منطق عملي وواقعي مباشر (يستجيب للحركة فوراً بدون كثرة شروط الرفض)
+                if ema7 > ema25 and rsi < 78:
                     side = "LONG 🚀"
-                    confidence = "عالية جداً (توافق الاتجاه والسيولة والزخم)"
-                    tp = cp * 1.025  # هدف آمن 2.5%
-                    sl = df['low'].iloc[-5:].min() * 0.99  # وقف خسارة محمي تحت أدنى قاع حديث
-                elif is_valid_short:
+                    tp = cp * 1.018  # هدف واقعي سريع 1.8%
+                    sl = df['low'].iloc[-5:].min() * 0.992
+                elif ema7 < ema25 and rsi > 22:
                     side = "SHORT 📉"
-                    confidence = "عالية جداً (توافق الهبوط والضغط البيعي)"
-                    tp = cp * 0.975  # هدف آمن 2.5%
-                    sl = df['high'].iloc[-5:].max() * 1.01 # وقف خسارة محمي فوق أعلى قمة حديثة
+                    tp = cp * 0.982  # هدف واقعي سريع 1.8%
+                    sl = df['high'].iloc[-5:].max() * 1.008
                 else:
-                    side = "WAIT ⏳"
-                    confidence = "معدومة (السوق غير مستقر أو الشروط غير متطابقة)"
-                    tp = cp
-                    sl = cp
-
+                    # إذا كانت السوق في تشبع كامل حاد، نأخذ عكس الحركة (ارتداد تصحيحي)
+                    if rsi >= 78:
+                        side = "SHORT 📉 (انعكاس تشبع)"
+                        tp = cp * 0.985
+                        sl = cp * 1.01
+                    elif rsi <= 22:
+                        side = "LONG 🚀 (ارتداد قاع)"
+                        tp = cp * 1.015
+                        sl = cp * 0.99
+                    else:
+                        side = "LONG 🚀"
+                        tp = cp * 1.015
+                        sl = cp * 0.99
+                
                 exchange_name = source.split()[0]
                 chart = f"https://www.tradingview.com/chart/?symbol={exchange_name}:{s}"
                 
-                msg = (f"🛡️ **التقرير التحليلي الآمن والصارم ({source})**\n"
+                msg = (f"🎯 **التحليل العملي المباشر ({source})**\n"
                        f"━━━━━━━━━━━━━━\n"
                        f"🪙 العملة: #{s}\n"
-                       f"📊 الإشارة: **{side}**\n"
-                       f"🎯 جودة الفرصة: `{confidence}`\n\n"
+                       f"📊 الإشارة: **{side}**\n\n"
                        f"📥 سعر الدخول: `{cp}`\n"
-                       f"🎯 الهدف الآمن: `{round(tp, 4)}`\n"
-                       f"🛑 وقف الخسارة المحمي: `{round(sl, 4)}`\n"
+                       f"🎯 الهدف: `{round(tp, 4)}`\n"
+                       f"🛑 وقف الخسارة: `{round(sl, 4)}`\n"
                        f"📈 مؤشر RSI: `{round(rsi, 2)}`\n"
                        f"━━━━━━━━━━━━━━\n"
                        f"📈 [عرض الشارت المباشر]({chart})")
