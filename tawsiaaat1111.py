@@ -62,92 +62,37 @@ def is_vip(uid):
 # --- [ المحرك التحليلي الخبير ] ---
 
 # --- [ المحرك التحليلي الخبير المطور ] ---
-# --- [ المحرك التحليلي الخبير والمستقل ] ---
+# --- [ المحرك التحليلي الخبير والمستقل ] ---.
+#  ] ---
 def fetch_expert_analysis(symbol):
-    s = symbol.upper().replace("#", "").strip()
-    if not s.endswith("USDT") and len(s) <= 6: 
-        s += "USDT"
-    
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    }
-    
-    endpoints = [
-        (f"https://data-api.binance.vision/api/v3/klines?symbol={s}&interval=15m&limit=100", "Binance 🟡"),
-        (f"https://api.mexc.com/api/v3/klines?symbol={s}&interval=15m&limit=100", "MEXC 🟢")
-    ]
-    
-    for url, source in endpoints:
-        try:
-            r = requests.get(url, headers=headers, timeout=10)
-            if r.status_code == 200:
-                data = r.json()
-                if not isinstance(data, list) or len(data) < 30:
-                    continue
-                
-                df = pd.DataFrame(data).astype(float)
-                df.columns = ['time', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'qav', 'num_trades', 'taker_base_vol', 'taker_quote_vol', 'ignore']
-                
-                cp = df['close'].iloc[-1]
-                op = df['open'].iloc[-1]
-                
-                # استخدام متوسطات حقيقية وسريعة (EMA 7 و EMA 25)
-                df['ema7'] = df['close'].ewm(span=7, adjust=False).mean()
-                df['ema25'] = df['close'].ewm(span=25, adjust=False).mean()
-                
-                # مؤشر RSI (14)
-                delta = df['close'].diff()
-                gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-                loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-                rs = gain / loss
-                df['rsi'] = 100 - (100 / (1 + rs))
-                
-                ema7 = df['ema7'].iloc[-1]
-                ema25 = df['ema25'].iloc[-1]
-                rsi = df['rsi'].iloc[-1]
-                
-                # منطق عملي وواقعي مباشر (يستجيب للحركة فوراً بدون كثرة شروط الرفض)
-                if ema7 > ema25 and rsi < 78:
-                    side = "LONG 🚀"
-                    tp = cp * 1.018  # هدف واقعي سريع 1.8%
-                    sl = df['low'].iloc[-5:].min() * 0.992
-                elif ema7 < ema25 and rsi > 22:
-                    side = "SHORT 📉"
-                    tp = cp * 0.982  # هدف واقعي سريع 1.8%
-                    sl = df['high'].iloc[-5:].max() * 1.008
-                else:
-                    # إذا كانت السوق في تشبع كامل حاد، نأخذ عكس الحركة (ارتداد تصحيحي)
-                    if rsi >= 78:
-                        side = "SHORT 📉 (انعكاس تشبع)"
-                        tp = cp * 0.985
-                        sl = cp * 1.01
-                    elif rsi <= 22:
-                        side = "LONG 🚀 (ارتداد قاع)"
-                        tp = cp * 1.015
-                        sl = cp * 0.99
-                    else:
-                        side = "LONG 🚀"
-                        tp = cp * 1.015
-                        sl = cp * 0.99
-                
-                exchange_name = source.split()[0]
-                chart = f"https://www.tradingview.com/chart/?symbol={exchange_name}:{s}"
-                
-                msg = (f"🎯 **التحليل العملي المباشر ({source})**\n"
-                       f"━━━━━━━━━━━━━━\n"
-                       f"🪙 العملة: #{s}\n"
-                       f"📊 الإشارة: **{side}**\n\n"
-                       f"📥 سعر الدخول: `{cp}`\n"
-                       f"🎯 الهدف: `{round(tp, 4)}`\n"
-                       f"🛑 وقف الخسارة: `{round(sl, 4)}`\n"
-                       f"📈 مؤشر RSI: `{round(rsi, 2)}`\n"
-                       f"━━━━━━━━━━━━━━\n"
-                       f"📈 [عرض الشارت المباشر]({chart})")
-                return msg, s
-        except Exception as e:
-            continue
-            
-    return None, None
+    s = symbol.upper().replace("#", "").strip()
+    if not s.endswith("USDT"): 
+        s += "USDT"
+    endpoints = [
+        (f"https://api.binance.com/api/v3/klines?symbol={s}&interval=1h&limit=100", "Binance 🟡"),
+        (f"https://api.mexc.com/api/v3/klines?symbol={s}&interval=60m&limit=100", "MEXC 🟢")
+    ]
+    for url, source in endpoints:
+        try:
+            r = requests.get(url, timeout=10)
+            if r.status_code == 200:
+                df = pd.DataFrame(r.json()).astype(float)
+                cp = df[4].iloc[-1]
+                ema20 = df[4].ewm(span=20).mean().iloc[-1]
+                vol_status = "انفجار سيولة 🔥" if df[5].iloc[-1] > df[5].rolling(20).mean().iloc[-1] * 1.5 else "سيولة مستقرة ⚖️"
+                side = "LONG 🚀" if cp > ema20 else "SHORT 📉"
+                tp = cp * 1.03 if side == "LONG 🚀" else cp * 0.97
+                sl = df[3].iloc[-10:].min() * 0.985 if side == "LONG 🚀" else df[2].iloc[-10:].max() * 1.015
+                chart = f"https://www.tradingview.com/chart/?symbol={source.split()[0]}:{s}"
+                msg = (f"🏛 **تقرير رادار القابضة الخبير ({source})**\n━━━━━━━━━━━━━━\n"
+                       f"🪙 العملة: #{s}\n📊 الإشارة: **{side}**\n\n"
+                       f"📥 الدخول: `{cp}`\n🎯 الهدف: `{round(tp,4)}`\n🛑 الوقف: `{round(sl,4)}`\n\n"
+                       f"✅ الحالة: {vol_status}\n━━━━━━━━━━━━━━\n"
+                       f"📈 [عرض الشارت المباشر]({chart})")
+                return msg, s
+        except: 
+            continue
+    return None, None
     
 # --- [ نظام العداد الذكي ] ---
 def check_limit(uid):
