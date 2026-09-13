@@ -65,16 +65,17 @@ def is_vip(uid):
 # --- [ المحرك التحليلي الخبير والمستقل ] ---
 def fetch_expert_analysis(symbol):
     s = symbol.upper().replace("#", "").strip()
-    if not s.endswith("USDT"): 
+    if not s.endswith("USDT") and len(s) <= 6: 
         s += "USDT"
     
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     }
     
+    # استخدام إطار 15 دقيقة الموثوق للتحليل السريع والدقيق
     endpoints = [
-        (f"https://data-api.binance.vision/api/v3/klines?symbol={s}&interval=1h&limit=100", "Binance 🟡"),
-        (f"https://api.mexc.com/api/v3/klines?symbol={s}&interval=60m&limit=100", "MEXC 🟢")
+        (f"https://data-api.binance.vision/api/v3/klines?symbol={s}&interval=15m&limit=100", "Binance 🟡"),
+        (f"https://api.mexc.com/api/v3/klines?symbol={s}&interval=15m&limit=100", "MEXC 🟢")
     ]
     
     for url, source in endpoints:
@@ -82,34 +83,72 @@ def fetch_expert_analysis(symbol):
             r = requests.get(url, headers=headers, timeout=10)
             if r.status_code == 200:
                 data = r.json()
-                if not isinstance(data, list) or len(data) < 10:
+                if not isinstance(data, list) or len(data) < 40:
                     continue
                 
                 df = pd.DataFrame(data).astype(float)
+                df.columns = ['time', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'qav', 'num_trades', 'taker_base_vol', 'taker_quote_vol', 'ignore']
                 
-                # الاعتماد على المنطق الأصلي البسيط والمضمون
-                cp = df[4].iloc[-1]
-                ema20 = df[4].ewm(span=20).mean().iloc[-1]
+                cp = df['close'].iloc[-1]
+                op = df['open'].iloc[-1]
+                hp = df['high'].iloc[-1]
+                lp = df['low'].iloc[-1]
                 
-                vol_current = df[5].iloc[-1]
-                vol_avg = df[5].rolling(20).mean().iloc[-1]
-                vol_status = "انفجار سيولة 🔥" if vol_current > vol_avg * 1.5 else "سيولة مستقرة ⚖️"
+                # حساب مؤشرات الاتجاه والزخم بدقة مؤسسية
+                df['ema20'] = df['close'].ewm(span=20, adjust=False).mean()
+                df['ema50'] = df['close'].ewm(span=50, adjust=False).mean()
                 
-                side = "LONG 🚀" if cp > ema20 else "SHORT 📉"
-                tp = cp * 1.03 if side == "LONG 🚀" else cp * 0.97
-                sl = df[3].iloc[-10:].min() * 0.985 if side == "LONG 🚀" else df[2].iloc[-10:].max() * 1.015
+                # مؤشر RSI (14)
+                delta = df['close'].diff()
+                gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                rs = gain / loss
+                df['rsi'] = 100 - (100 / (1 + rs))
                 
+                ema20 = df['ema20'].iloc[-1]
+                ema50 = df['ema50'].iloc[-1]
+                rsi = df['rsi'].iloc[-1]
+                
+                # فحص السيولة وحجم التداول
+                vol_current = df['volume'].iloc[-1]
+                vol_avg = df['volume'].rolling(20).mean().iloc[-1]
+                is_high_volume = vol_current > (vol_avg * 1.2)
+                
+                # شروط صارمة جداً جداً لمنع أي صفقة ضعيفة
+                # صعود (LONG): الاتجاه صاعد (EMA20 > EMA50) + RSI في منطقة صحية (45 إلى 65) + الشمعة خضراء بقوة وبسيولة عالية
+                is_valid_long = (ema20 > ema50) and (45 <= rsi <= 65) and (cp > op) and is_high_volume
+                
+                # هبوط (SHORT): الاتجاه هابط (EMA20 < EMA50) + RSI في منطقة ضغط بيعي (35 إلى 55) + الشمعة حمراء بقوة وبسيولة عالية
+                is_valid_short = (ema20 < ema50) and (35 <= rsi <= 55) and (cp < op) and is_high_volume
+                
+                if is_valid_long:
+                    side = "LONG 🚀"
+                    confidence = "عالية جداً (توافق الاتجاه والسيولة والزخم)"
+                    tp = cp * 1.025  # هدف آمن 2.5%
+                    sl = df['low'].iloc[-5:].min() * 0.99  # وقف خسارة محمي تحت أدنى قاع حديث
+                elif is_valid_short:
+                    side = "SHORT 📉"
+                    confidence = "عالية جداً (توافق الهبوط والضغط البيعي)"
+                    tp = cp * 0.975  # هدف آمن 2.5%
+                    sl = df['high'].iloc[-5:].max() * 1.01 # وقف خسارة محمي فوق أعلى قمة حديثة
+                else:
+                    side = "WAIT ⏳"
+                    confidence = "معدومة (السوق غير مستقر أو الشروط غير متطابقة)"
+                    tp = cp
+                    sl = cp
+
                 exchange_name = source.split()[0]
                 chart = f"https://www.tradingview.com/chart/?symbol={exchange_name}:{s}"
                 
-                msg = (f"🏛 **تقرير رادار القابضة الخبير ({source})**\n"
+                msg = (f"🛡️ **التقرير التحليلي الآمن والصارم ({source})**\n"
                        f"━━━━━━━━━━━━━━\n"
                        f"🪙 العملة: #{s}\n"
-                       f"📊 الإشارة: **{side}**\n\n"
-                       f"📥 الدخول: `{cp}`\n"
-                       f"🎯 الهدف: `{round(tp, 4)}`\n"
-                       f"🛑 الوقف: `{round(sl, 4)}`\n\n"
-                       f"✅ الحالة: {vol_status}\n"
+                       f"📊 الإشارة: **{side}**\n"
+                       f"🎯 جودة الفرصة: `{confidence}`\n\n"
+                       f"📥 سعر الدخول: `{cp}`\n"
+                       f"🎯 الهدف الآمن: `{round(tp, 4)}`\n"
+                       f"🛑 وقف الخسارة المحمي: `{round(sl, 4)}`\n"
+                       f"📈 مؤشر RSI: `{round(rsi, 2)}`\n"
                        f"━━━━━━━━━━━━━━\n"
                        f"📈 [عرض الشارت المباشر]({chart})")
                 return msg, s
