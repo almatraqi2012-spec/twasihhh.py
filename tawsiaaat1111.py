@@ -60,10 +60,8 @@ def is_vip(uid):
     return False
 
 # --- [ المحرك التحليلي الخبير ] ---
-
 # --- [ المحرك التحليلي الخبير المطور ] ---
 # --- [ المحرك التحليلي الخبير والمستقل ] ---.
-#  ] ---
 def fetch_expert_analysis(symbol):
     s = symbol.upper().replace("#", "").strip()
     if not s.endswith("USDT"): 
