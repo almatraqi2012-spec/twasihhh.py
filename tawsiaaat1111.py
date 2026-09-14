@@ -63,34 +63,34 @@ def is_vip(uid):
 # --- [ المحرك التحليلي الخبير المطور ] ---
 # --- [ المحرك التحليلي الخبير والمستقل ] ---.
 def fetch_expert_analysis(symbol):
-    s = symbol.upper().replace("#", "").strip()
-    if not s.endswith("USDT"): 
-        s += "USDT"
-    endpoints = [
-        (f"https://api.binance.com/api/v3/klines?symbol={s}&interval=1h&limit=100", "Binance 🟡"),
-        (f"https://api.mexc.com/api/v3/klines?symbol={s}&interval=60m&limit=100", "MEXC 🟢")
-    ]
-    for url, source in endpoints:
-        try:
-            r = requests.get(url, timeout=10)
-            if r.status_code == 200:
-                df = pd.DataFrame(r.json()).astype(float)
-                cp = df[4].iloc[-1]
-                ema20 = df[4].ewm(span=20).mean().iloc[-1]
-                vol_status = "انفجار سيولة 🔥" if df[5].iloc[-1] > df[5].rolling(20).mean().iloc[-1] * 1.5 else "سيولة مستقرة ⚖️"
-                side = "LONG 🚀" if cp > ema20 else "SHORT 📉"
-                tp = cp * 1.03 if side == "LONG 🚀" else cp * 0.97
-                sl = df[3].iloc[-10:].min() * 0.985 if side == "LONG 🚀" else df[2].iloc[-10:].max() * 1.015
-                chart = f"https://www.tradingview.com/chart/?symbol={source.split()[0]}:{s}"
-                msg = (f"🏛 **تقرير رادار القابضة الخبير ({source})**\n━━━━━━━━━━━━━━\n"
-                       f"🪙 العملة: #{s}\n📊 الإشارة: **{side}**\n\n"
-                       f"📥 الدخول: `{cp}`\n🎯 الهدف: `{round(tp,4)}`\n🛑 الوقف: `{round(sl,4)}`\n\n"
-                       f"✅ الحالة: {vol_status}\n━━━━━━━━━━━━━━\n"
-                       f"📈 [عرض الشارت المباشر]({chart})")
-                return msg, s
-        except: 
-            continue
-    return None, None
+    s = symbol.upper().replace("#", "").strip()
+    if not s.endswith("USDT"): 
+        s += "USDT"
+    endpoints = [
+        (f"https://api.binance.com/api/v3/klines?symbol={s}&interval=1h&limit=100", "Binance 🟡"),
+        (f"https://api.mexc.com/api/v3/klines?symbol={s}&interval=60m&limit=100", "MEXC 🟢")
+    ]
+    for url, source in endpoints:
+        try:
+            r = requests.get(url, timeout=10)
+            if r.status_code == 200:
+                df = pd.DataFrame(r.json()).astype(float)
+                cp = df[4].iloc[-1]
+                ema20 = df[4].ewm(span=20).mean().iloc[-1]
+                vol_status = "انفجار سيولة 🔥" if df[5].iloc[-1] > df[5].rolling(20).mean().iloc[-1] * 1.5 else "سيولة مستقرة ⚖️"
+                side = "LONG 🚀" if cp > ema20 else "SHORT 📉"
+                tp = cp * 1.03 if side == "LONG 🚀" else cp * 0.97
+                sl = df[3].iloc[-10:].min() * 0.985 if side == "LONG 🚀" else df[2].iloc[-10:].max() * 1.015
+                chart = f"https://www.tradingview.com/chart/?symbol={source.split()[0]}:{s}"
+                msg = (f"🏛 **تقرير رادار القابضة الخبير ({source})**\n━━━━━━━━━━━━━━\n"
+                       f"🪙 العملة: #{s}\n📊 الإشارة: **{side}**\n\n"
+                       f"📥 الدخول: `{cp}`\n🎯 الهدف: `{round(tp,4)}`\n🛑 الوقف: `{round(sl,4)}`\n\n"
+                       f"✅ الحالة: {vol_status}\n━━━━━━━━━━━━━━\n"
+                       f"📈 [عرض الشارت المباشر]({chart})")
+                return msg, s
+        except: 
+            continue
+    return None, None
     
 # --- [ نظام العداد الذكي ] ---
 def check_limit(uid):
