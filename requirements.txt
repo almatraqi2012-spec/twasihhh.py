@@ -1,8 +1,5 @@
-pandas
 pyTelegramBotAPI
 requests
-numpy
-ccxt
 flask
-gunicorn
-pandas-ta
+pandas
+numpy
