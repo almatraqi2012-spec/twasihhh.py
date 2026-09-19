@@ -1,6 +1,7 @@
-requests
 pandas
+pyTelegramBotAPI
+requests
 numpy
-pandas-ta
-pytelegrambotapi
+ccxt
 flask
+gunicorn
