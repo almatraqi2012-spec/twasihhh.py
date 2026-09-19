@@ -60,7 +60,6 @@ def is_vip(uid):
     return False
 
 # --- [ المحرك التحليلي الخبير ] ---
-import pandas_ta as ta  # تأكد من استيرادها في أعلى الملف
 
 # --- [ المحرك التحليلي الخبير المطور ] ---
 def fetch_expert_analysis(symbol):
