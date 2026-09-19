@@ -27,7 +27,7 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pandas pyTelegramBotAPI requests numpy ccxt flask telethon pandas-ta
+          pip install pandas pyTelegramBotAPI requests numpy ccxt flask telethon
           
       - name: Run Bot
         env:
