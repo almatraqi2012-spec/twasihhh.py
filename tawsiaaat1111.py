@@ -113,7 +113,7 @@ def check_limit(uid):
 # --- [ الواجهات ] ---
 def main_menu():
     m = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    m.add("🔍 المحلل الذكي", "👑 اشتراك VIP", "👤 حسابي")
+    m.add("🔍 تحليل العمله", "👑 اشتراك VIP", "👤 حسابي")
     return m
 
 @bot.message_handler(commands=['start'])
@@ -162,7 +162,7 @@ def analysis_gate(m):
 
 def run_analysis(m):
     uid = str(m.chat.id)
-    if m.text in ["🔍 المحلل الذكي", "👑 اشتراك VIP", "👤 حسابي"]: 
+    if m.text in ["🔍 تحليل العملة", "👑 اشتراك VIP", "👤 حسابي"]: 
         return
     res, symbol = fetch_expert_analysis(m.text)
     if res:
